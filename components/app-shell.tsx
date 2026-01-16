@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { TreeSidebar } from './tree-sidebar';
 import { EditorWorkspace } from './editor-workspace';
 import { QuickSwitcher } from './quick-switcher';
+import { SidebarHeader } from './sidebar-header';
 import { useNoteStore } from '@/lib/store';
 import { Button } from './ui/button';
 import { Columns2, Maximize2 } from 'lucide-react';
@@ -85,17 +86,7 @@ export function AppShell() {
 			<div className="flex-1 flex overflow-hidden">
 				{/* Tree Sidebar */}
 				<div className="flex-shrink-0 flex flex-col border-r border-border" style={{ width: `${sidebarWidth}px` }}>
-					<div className="h-11 border-b border-border flex items-center justify-between px-4 flex-shrink-0 bg-card/30">
-						<Button
-							size="sm"
-							variant="ghost"
-							onClick={() => setSplitMode(splitMode === 'single' ? 'split' : 'single')}
-							className="h-7 w-7 p-0 hover:bg-accent transition-colors shrink-0"
-							title={splitMode === 'single' ? '分割表示' : '単一表示'}
-						>
-							{splitMode === 'single' ? <Columns2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-						</Button>
-					</div>
+					<SidebarHeader splitMode={splitMode} setSplitMode={setSplitMode} />
 
 					<div className="flex-1 overflow-hidden">
 						<TreeSidebar />

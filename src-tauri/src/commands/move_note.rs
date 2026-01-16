@@ -2,101 +2,117 @@ use tauri::State;
 use crate::AppState;
 use rusqlite::{params, OptionalExtension};
 
+/// Move a note to a new position.
+/// - new_parent_id: The new parent (null for root)
+/// - after_id: Place the note AFTER this sibling. If None, place at the beginning.
 #[tauri::command]
 pub fn move_note(
     state: State<'_, AppState>,
     note_id: String,
     new_parent_id: Option<String>,
-    before_id: Option<String>,
-    after_id: Option<String>,
+    _before_id: Option<String>, // Ignored in new simple system
+    after_id: Option<String>,   // Place after this node
 ) -> Result<(), String> {
     let mut conn = state.db.lock().map_err(|_| "Failed to lock database")?;
     let note_id_int = note_id.parse::<i64>().map_err(|_| "Invalid Note ID")?;
-    match &new_parent_id {
-        Some(s) => if s == &note_id { return Err("Cannot move node into itself".into()); },
-        None => {}
-    };
 
-    let new_parent_id_int = match new_parent_id.as_ref() {
+    // Prevent moving into self
+    if let Some(ref pid) = new_parent_id {
+        if pid == &note_id {
+            return Err("Cannot move node into itself".into());
+        }
+    }
+
+    let new_parent_id_int: Option<i64> = match new_parent_id.as_ref() {
         Some(s) => Some(s.parse::<i64>().map_err(|_| "Invalid Parent ID")?),
         None => None,
     };
 
-    // Cycle check
-    // If moving to a new parent, ensure that new parent is not a descendant of note_id (or note_id itself).
+    // Cycle check: ensure new_parent is not a descendant of note_id
     if let Some(target_parent) = new_parent_id_int {
-        let mut current = target_parent; // i64
+        let mut current = target_parent;
         loop {
             if current == note_id_int {
                 return Err("Cannot move node into its own descendant".into());
             }
-            // Get parent of current
-            let p_res: Option<i64> = conn.query_row(
+            // parent_id can be NULL (for root nodes), so read as Option<i64>
+            let p_res: Option<Option<i64>> = conn.query_row(
                 "SELECT parent_id FROM notes WHERE id = ?",
                 [current],
-                |row| row.get(0)
+                |row| row.get::<_, Option<i64>>(0)
             ).optional().map_err(|e| e.to_string())?;
-
+            
             match p_res {
-                Some(pid) => current = pid,
-                None => break, // Reached root or node not found
+                Some(Some(pid)) => current = pid, // Has a parent, continue up the tree
+                Some(None) => break,              // Reached root (parent_id is NULL)
+                None => break,                    // Node not found
             }
         }
     }
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    
-    // Calculate new order
-    // fetch order of before and after
-    let before_order: Option<f64> = match before_id {
-        Some(s) => {
-            let id = s.parse::<i64>().map_err(|_| "Invalid Before ID")?;
-            tx.query_row("SELECT order_key FROM notes WHERE id = ?", [id], |r| r.get(0))
-              .optional().map_err(|e| e.to_string())?
-        },
-        None => None
+
+    // Get all siblings of the target parent (excluding the moving node), sorted by order_key
+    let mut siblings: Vec<i64> = {
+        let (sql, params_vec): (&str, Vec<&dyn rusqlite::ToSql>) = match new_parent_id_int {
+            Some(ref pid) => (
+                "SELECT id FROM notes WHERE parent_id = ? AND is_deleted = 0 AND id != ? ORDER BY order_key",
+                vec![pid, &note_id_int],
+            ),
+            None => (
+                "SELECT id FROM notes WHERE parent_id IS NULL AND is_deleted = 0 AND id != ? ORDER BY order_key",
+                vec![&note_id_int],
+            ),
+        };
+
+        let mut stmt = tx.prepare(sql).map_err(|e| e.to_string())?;
+        
+        // Convert Vec<&dyn ToSql> to slice for query_map
+        let rows = stmt.query_map(params_vec.as_slice(), |row| row.get(0))
+            .map_err(|e| e.to_string())?;
+        
+        let mut ids = Vec::new();
+        for row in rows {
+            ids.push(row.map_err(|e| e.to_string())?);
+        }
+        ids
     };
 
-    let after_order: Option<f64> = match after_id {
-        Some(s) => {
-            let id = s.parse::<i64>().map_err(|_| "Invalid After ID")?;
-            tx.query_row("SELECT order_key FROM notes WHERE id = ?", [id], |r| r.get(0))
-              .optional().map_err(|e| e.to_string())?
-        },
-        None => None
+    // Determine insertion index
+    // We insert AT the position of target_id (pushing it down), not after it
+    let insert_index = if let Some(target_id_str) = after_id {
+        let target_id_int = target_id_str.parse::<i64>().map_err(|_| "Invalid Target ID")?;
+        // Find position of target_id and insert AT that position
+        match siblings.iter().position(|&id| id == target_id_int) {
+            Some(pos) => pos, // Insert AT this position (target gets pushed down)
+            None => siblings.len(), // If not found, append to end
+        }
+    } else {
+        siblings.len() // No target means append to end
     };
 
-    let new_order = match (before_order, after_order) {
-        (Some(b), Some(a)) => (b + a) / 2.0,
-        (Some(b), None) => b + 1024.0, // After 'before' (at end?) -> Wait. before_id is the node ABOVE?
-        // Usually "before" means "places before this node" in API terms? 
-        // Or "node that is before me"? 
-        // Plan says: "before_id?, after_id? -> before/after from order_key".
-        // Let's assume `before_id` is the node immediately PRECEDING the new position (above).
-        // `after_id` is the node immediately FOLLOWING the new position (below).
-        
-        // Case: Insert between A (before) and B (after). New = (A+B)/2.
-        // ((Some(b), Some(a)) => (b + a)/2.0)
-        
-        // Case: Insert at end (after A). `before_id` = A, `after_id` = None.
-        // New = A + 1024.0.
-        
-        // Case: Insert at start (before B). `before_id` = None, `after_id` = B.
-        // New = B / 2.0? Or B - 1024.0?
-        // Order keys are REAL.
-        // If B is 1024, B/2 = 512.
-        // If B is negative? Unlikely, created > 0.
-        // Anyhow B - constant or B/2 works.
-        (None, Some(a)) => a - 1024.0, 
-        
-        (None, None) => 1024.0, // No siblings, becomes first child.
-    };
+    // Insert the moving node at the calculated position
+    siblings.insert(insert_index, note_id_int);
 
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+    // Update order_key for all siblings: 0, 1000, 2000, 3000, ...
+    // Using 1000 increments to leave room for future inserts without full reindex
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
 
+    for (i, sibling_id) in siblings.iter().enumerate() {
+        let new_order = (i as f64) * 1000.0;
+        tx.execute(
+            "UPDATE notes SET order_key = ?, updated_at = ? WHERE id = ?",
+            params![new_order, now, sibling_id]
+        ).map_err(|e| e.to_string())?;
+    }
+
+    // Update parent_id for the moved note
     tx.execute(
-        "UPDATE notes SET parent_id = ?, order_key = ?, updated_at = ? WHERE id = ?",
-        params![new_parent_id_int, new_order, now, note_id_int]
+        "UPDATE notes SET parent_id = ? WHERE id = ?",
+        params![new_parent_id_int, note_id_int]
     ).map_err(|e| e.to_string())?;
 
     tx.commit().map_err(|e| e.to_string())?;

@@ -36,11 +36,15 @@ pub fn run() {
       commands::notes::create_child,
       commands::notes::rename_note,
       commands::notes::soft_delete_note,
+      commands::notes::toggle_pin_note,
       commands::search::search_notes,
       commands::move_note::move_note,
       commands::open::mark_open,
       commands::open::touch_open,
       commands::open::get_open_list,
+      commands::trash::get_deleted_notes,
+      commands::trash::restore_note,
+      commands::trash::hard_delete_note,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

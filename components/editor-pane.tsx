@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNoteStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { FileText } from 'lucide-react';
+import { StatusIndicator } from './status-indicator';
 
 // CodeMirror imports
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, highlightActiveLine, scrollPastEnd } from '@codemirror/view';
@@ -20,7 +21,7 @@ interface EditorPaneProps {
 }
 
 export function EditorPane({ paneId }: EditorPaneProps) {
-	const { treeNodes, activeNodeIds, focusedPane, updateNoteContent, setFocusedPane } = useNoteStore();
+	const { treeNodes, activeNodeIds, focusedPane, updateNoteContent, setFocusedPane, setSaveStatus } = useNoteStore();
 
 	const activeNodeId = activeNodeIds[paneId];
 	const activeNode = treeNodes.find((n) => n.id === activeNodeId);
@@ -47,7 +48,7 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 			className={cn('h-full flex flex-col transition-all duration-150 relative', isFocused ? 'ring-1 ring-inset ring-foreground/[0.08] bg-background' : 'bg-muted/20')}
 			onClick={() => setFocusedPane(paneId)}
 		>
-			<div className="px-8 pt-5 pb-3 flex items-center justify-between text-[11px] flex-shrink-0">
+			<div className="px-8 pt-5 pb-3 flex items-center justify-between text-[11px] flex-shrink-0 min-h-[44px]">
 				<div className="flex items-center gap-1.5 text-muted-foreground/40 font-medium tracking-tight h-4">
 					{breadcrumb.map((item, index) => (
 						<span key={index} className="flex items-center gap-1.5">
@@ -56,14 +57,22 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 						</span>
 					))}
 				</div>
+				<StatusIndicator />
 			</div>
 
 			<div className="flex-1 relative overflow-hidden">
 				{activeNode ? (
 					<CodeMirrorEditor
 						key={activeNode.id}
+						activeNodeId={activeNode.id}
+						paneId={paneId}
 						content={activeNode.content}
-						onSave={(content) => updateNoteContent(activeNode.id, content)}
+						onSave={(content) => {
+							setSaveStatus('saving');
+							updateNoteContent(activeNode.id, content).then(() => {
+								setSaveStatus('saved');
+							});
+						}}
 						onFocus={() => setFocusedPane(paneId)}
 						isFocused={isFocused}
 					/>
@@ -83,7 +92,23 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 	);
 }
 
-function CodeMirrorEditor({ content, onSave, onFocus, isFocused }: { content: string; onSave: (c: string) => void; onFocus: () => void; isFocused: boolean }) {
+function CodeMirrorEditor({
+	content,
+	onSave,
+	onFocus,
+	isFocused,
+	activeNodeId,
+	paneId,
+}: {
+	content: string;
+	onSave: (c: string) => void;
+	onFocus: () => void;
+	isFocused: boolean;
+	activeNodeId: string;
+	paneId: 1 | 2;
+}) {
+	const { focusTarget } = useNoteStore();
+	const consumedTriggerRef = useRef(focusTarget.trigger);
 	const editorRef = useRef<HTMLDivElement>(null);
 	const viewRef = useRef<EditorView | null>(null);
 	const [isDirty, setIsDirty] = useState(false);
@@ -162,21 +187,20 @@ function CodeMirrorEditor({ content, onSave, onFocus, isFocused }: { content: st
 
 		viewRef.current = view;
 
-		if (isFocused) {
-			view.focus();
-		}
-
 		return () => {
 			view.destroy();
 		};
 	}, []); // Initialize once per key (node.id)
 
-	// Focus effect
+	// Focus effect reactive to explicit request
 	useEffect(() => {
-		if (isFocused && viewRef.current) {
-			viewRef.current.focus();
+		if (isFocused && viewRef.current && focusTarget.nodeId === activeNodeId && focusTarget.paneId === paneId) {
+			if (focusTarget.trigger > consumedTriggerRef.current) {
+				viewRef.current.focus();
+				consumedTriggerRef.current = focusTarget.trigger;
+			}
 		}
-	}, [isFocused]);
+	}, [isFocused, focusTarget, activeNodeId, paneId]);
 
 	// Save effect
 	useEffect(() => {

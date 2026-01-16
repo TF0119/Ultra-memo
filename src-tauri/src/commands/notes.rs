@@ -105,6 +105,7 @@ pub fn create_sibling(state: State<'_, AppState>, selected_id: String) -> Result
         content: "".to_string(),
         order_key: new_order,
         is_open: false,
+        is_pinned: false,
         created_at: now,
         updated_at: now,
         has_children: false,
@@ -148,12 +149,12 @@ pub fn create_child(state: State<'_, AppState>, parent_id: Option<String>) -> Re
 
     Ok(TreeNode {
         id: new_id.to_string(),
-        parent_id: parent_id, // Return passed string directly usually, but check type.
-        // Or parent_id_int.map(|i| i.to_string())
+        parent_id: parent_id,
         title: "New Child".to_string(),
         content: "".to_string(),
         order_key: new_order,
         is_open: false,
+        is_pinned: false,
         created_at: now,
         updated_at: now,
         has_children: false,
@@ -201,4 +202,26 @@ pub fn soft_delete_note(state: State<'_, AppState>, id: String) -> Result<(), St
     ).map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn toggle_pin_note(state: State<'_, AppState>, id: String) -> Result<bool, String> {
+    let conn = state.db.lock().map_err(|_| "Failed to lock database")?;
+    let id_int = id.parse::<i64>().map_err(|_| "Invalid ID format")?;
+
+    // Get current pin state
+    let is_pinned: i64 = conn.query_row(
+        "SELECT is_pinned FROM notes WHERE id = ?",
+        [id_int],
+        |row| row.get(0)
+    ).map_err(|e| e.to_string())?;
+
+    let new_state = if is_pinned == 0 { 1 } else { 0 };
+
+    conn.execute(
+        "UPDATE notes SET is_pinned = ? WHERE id = ?",
+        params![new_state, id_int],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(new_state == 1)
 }

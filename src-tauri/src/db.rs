@@ -62,6 +62,16 @@ fn migrate(conn: &mut Connection) -> Result<()> {
         [],
     )?;
 
+    // Migration: Add is_pinned column if it doesn't exist
+    let columns: Vec<String> = tx.prepare("PRAGMA table_info(notes)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+    
+    if !columns.contains(&"is_pinned".to_string()) {
+        tx.execute("ALTER TABLE notes ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0", [])?;
+    }
+
     // FTS5 Virtual Table
     tx.execute(
         "CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(title, content, content='notes', content_rowid='id')",
