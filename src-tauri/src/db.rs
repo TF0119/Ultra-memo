@@ -71,6 +71,11 @@ fn migrate(conn: &mut Connection) -> Result<()> {
     if !columns.contains(&"is_pinned".to_string()) {
         tx.execute("ALTER TABLE notes ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0", [])?;
     }
+    
+    // Migration: Add is_markdown_view column if it doesn't exist
+    if !columns.contains(&"is_markdown_view".to_string()) {
+        tx.execute("ALTER TABLE notes ADD COLUMN is_markdown_view INTEGER NOT NULL DEFAULT 0", [])?;
+    }
 
     // FTS5 Virtual Table
     tx.execute(

@@ -9,6 +9,7 @@ export interface TreeNode {
 	orderKey: number;
 	is_open: boolean;
 	isPinned: boolean;
+	isMarkdownView: boolean;
 	hasChildren: boolean;
 	createdAt: number;
 	updatedAt: number;
@@ -45,6 +46,7 @@ interface NoteStore {
 	deleteNote: (id: string) => Promise<void>;
 	moveNote: (noteId: string, newParentId: string | null, beforeId?: string, afterId?: string) => Promise<void>;
 	togglePinNote: (id: string) => Promise<void>;
+	toggleMarkdownView: (id: string) => Promise<void>;
 	triggerEditorFocus: () => void;
 
 	// History Actions
@@ -301,6 +303,17 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 			}));
 		} catch (error) {
 			console.error('Failed to toggle pin:', error);
+		}
+	},
+
+	toggleMarkdownView: async (id) => {
+		try {
+			const isMarkdownView = await invoke<boolean>('toggle_markdown_view', { id });
+			set((state) => ({
+				treeNodes: state.treeNodes.map((node) => (node.id === id ? { ...node, isMarkdownView } : node)),
+			}));
+		} catch (error) {
+			console.error('Failed to toggle markdown view:', error);
 		}
 	},
 

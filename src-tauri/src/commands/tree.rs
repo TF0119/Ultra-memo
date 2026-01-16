@@ -12,6 +12,7 @@ pub struct TreeNode {
     pub order_key: f64,
     pub is_open: bool,
     pub is_pinned: bool,
+    pub is_markdown_view: bool,
     pub created_at: i64,
     pub updated_at: i64,
     pub has_children: bool,
@@ -24,7 +25,7 @@ pub fn get_tree_snapshot(state: State<'_, AppState>) -> Result<Vec<TreeNode>, St
     // Fetch nodes with has_children check
     let mut stmt = conn.prepare(
         "SELECT 
-            n.id, n.parent_id, n.title, n.content, n.order_key, n.is_open, n.is_pinned, n.created_at, n.updated_at,
+            n.id, n.parent_id, n.title, n.content, n.order_key, n.is_open, n.is_pinned, n.is_markdown_view, n.created_at, n.updated_at,
             EXISTS(SELECT 1 FROM notes c WHERE c.parent_id = n.id AND c.is_deleted = 0) as has_children
          FROM notes n
          WHERE n.is_deleted = 0
@@ -40,9 +41,10 @@ pub fn get_tree_snapshot(state: State<'_, AppState>) -> Result<Vec<TreeNode>, St
             order_key: row.get(4)?,
             is_open: row.get::<_, i64>(5)? != 0,
             is_pinned: row.get::<_, i64>(6)? != 0,
-            created_at: row.get(7)?,
-            updated_at: row.get(8)?,
-            has_children: row.get::<_, i64>(9)? != 0,
+            is_markdown_view: row.get::<_, i64>(7)? != 0,
+            created_at: row.get(8)?,
+            updated_at: row.get(9)?,
+            has_children: row.get::<_, i64>(10)? != 0,
         })
     }).map_err(|e| e.to_string())?;
 

@@ -106,6 +106,7 @@ pub fn create_sibling(state: State<'_, AppState>, selected_id: String) -> Result
         order_key: new_order,
         is_open: false,
         is_pinned: false,
+        is_markdown_view: false,
         created_at: now,
         updated_at: now,
         has_children: false,
@@ -155,6 +156,7 @@ pub fn create_child(state: State<'_, AppState>, parent_id: Option<String>) -> Re
         order_key: new_order,
         is_open: false,
         is_pinned: false,
+        is_markdown_view: false,
         created_at: now,
         updated_at: now,
         has_children: false,
@@ -220,6 +222,28 @@ pub fn toggle_pin_note(state: State<'_, AppState>, id: String) -> Result<bool, S
 
     conn.execute(
         "UPDATE notes SET is_pinned = ? WHERE id = ?",
+        params![new_state, id_int],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(new_state == 1)
+}
+
+#[tauri::command]
+pub fn toggle_markdown_view(state: State<'_, AppState>, id: String) -> Result<bool, String> {
+    let conn = state.db.lock().map_err(|_| "Failed to lock database")?;
+    let id_int = id.parse::<i64>().map_err(|_| "Invalid ID format")?;
+
+    // Get current markdown view state
+    let is_markdown_view: i64 = conn.query_row(
+        "SELECT is_markdown_view FROM notes WHERE id = ?",
+        [id_int],
+        |row| row.get(0)
+    ).map_err(|e| e.to_string())?;
+
+    let new_state = if is_markdown_view == 0 { 1 } else { 0 };
+
+    conn.execute(
+        "UPDATE notes SET is_markdown_view = ? WHERE id = ?",
         params![new_state, id_int],
     ).map_err(|e| e.to_string())?;
 

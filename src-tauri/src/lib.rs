@@ -37,6 +37,7 @@ pub fn run() {
       commands::notes::rename_note,
       commands::notes::soft_delete_note,
       commands::notes::toggle_pin_note,
+      commands::notes::toggle_markdown_view,
       commands::search::search_notes,
       commands::move_note::move_note,
       commands::open::mark_open,
