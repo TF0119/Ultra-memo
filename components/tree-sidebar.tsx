@@ -24,7 +24,10 @@ export function TreeSidebar() {
 	} = useNoteStore();
 
 	const [searchQuery, setSearchQuery] = useState('');
+	const [renamingId, setRenamingId] = useState<string | null>(null);
+	const [renamingTitle, setRenamingTitle] = useState('');
 	const activeNodeRef = useRef<HTMLDivElement>(null);
+	const renameInputRef = useRef<HTMLInputElement>(null);
 
 	// Auto-scroll to active node when Follow Active is enabled
 	useEffect(() => {
@@ -33,6 +36,31 @@ export function TreeSidebar() {
 		}
 	}, [activeNodeIds, isFollowActiveEnabled]);
 
+	// F2 key to rename selected node
+	useEffect(() => {
+		const handleGlobalKeyDown = (e: KeyboardEvent) => {
+			if (e.key === 'F2' && selectedNodeId && !renamingId) {
+				const node = treeNodes.find((n) => n.id === selectedNodeId);
+				if (node) {
+					e.preventDefault();
+					setRenamingId(node.id);
+					setRenamingTitle(node.title);
+				}
+			}
+		};
+
+		window.addEventListener('keydown', handleGlobalKeyDown);
+		return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+	}, [selectedNodeId, renamingId, treeNodes]);
+
+	// Focus rename input when it appears
+	useEffect(() => {
+		if (renamingId && renameInputRef.current) {
+			renameInputRef.current.focus();
+			renameInputRef.current.select();
+		}
+	}, [renamingId]);
+
 	const filteredNodes = treeNodes.filter((node) => node.title.toLowerCase().includes(searchQuery.toLowerCase()));
 
 	const renderNode = (node: TreeNode, depth = 0) => {
@@ -40,6 +68,7 @@ export function TreeSidebar() {
 		const isSelected = selectedNodeId === node.id;
 		const isActive = activeNodeIds[focusedPane] === node.id;
 		const isOpen = openNodeIds.has(node.id);
+		const isRenaming = renamingId === node.id;
 		const hasChildren = node.hasChildren;
 
 		const children = treeNodes.filter((n) => n.parentId === node.id);
@@ -50,13 +79,14 @@ export function TreeSidebar() {
 					ref={isActive ? activeNodeRef : null}
 					className={cn(
 						'flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none transition-all duration-100 relative group',
-						'hover:bg-accent/70',
-						isSelected && !isActive && 'bg-accent/50',
-						isActive && 'bg-primary text-primary-foreground font-medium'
+						isActive ? 'bg-primary text-primary-foreground font-medium hover:bg-primary' : 'hover:bg-accent/70',
+						isSelected && !isActive && 'bg-accent/50'
 					)}
 					style={{ paddingLeft: `${depth * 16 + 12}px` }}
-					onClick={() => selectNode(node.id)}
-					onDoubleClick={() => openNote(node.id, focusedPane)}
+					onClick={() => {
+						selectNode(node.id);
+						openNote(node.id, focusedPane);
+					}}
 				>
 					{isActive && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-primary-foreground" />}
 
@@ -78,7 +108,41 @@ export function TreeSidebar() {
 					<FileText className={cn('w-3.5 h-3.5 flex-shrink-0', isActive ? 'opacity-100' : 'opacity-40')} />
 					{isOpen && !isActive && <div className="w-1 h-1 rounded-full bg-foreground/30 flex-shrink-0 -ml-1" />}
 
-					<span className={cn('flex-1 truncate text-[13px] tracking-tight leading-tight transition-all', isActive ? 'font-semibold' : 'font-normal')}>{node.title}</span>
+					{isRenaming ? (
+						<input
+							ref={renameInputRef}
+							type="text"
+							value={renamingTitle}
+							onChange={(e) => setRenamingTitle(e.target.value)}
+							onKeyDown={async (e) => {
+								if (e.key === 'Enter') {
+									e.preventDefault();
+									if (renamingTitle.trim()) {
+										const { renameNote } = useNoteStore.getState();
+										await renameNote(node.id, renamingTitle);
+									}
+									setRenamingId(null);
+								} else if (e.key === 'Escape') {
+									setRenamingId(null);
+								}
+							}}
+							onBlur={async () => {
+								if (renamingId === node.id) {
+									if (renamingTitle.trim() && renamingTitle !== node.title) {
+										const { renameNote } = useNoteStore.getState();
+										await renameNote(node.id, renamingTitle);
+									}
+									setRenamingId(null);
+								}
+							}}
+							className="flex-1 bg-background text-foreground text-[13px] px-1 py-0.5 border border-primary/50 rounded focus:outline-none"
+							onClick={(e) => e.stopPropagation()}
+						/>
+					) : (
+						<span className={cn('flex-1 truncate text-[13px] tracking-tight leading-tight transition-all', isActive ? 'font-semibold' : 'font-normal')}>
+							{node.title}
+						</span>
+					)}
 
 					<span className="text-[11px] opacity-0 group-hover:opacity-40 transition-opacity tabular-nums font-medium">{node.content.length}</span>
 				</div>

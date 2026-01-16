@@ -90,19 +90,10 @@ export function AppShell() {
 							size="sm"
 							variant="ghost"
 							onClick={() => setSplitMode(splitMode === 'single' ? 'split' : 'single')}
-							className="h-7 px-2.5 text-xs hover:bg-accent transition-colors font-medium tracking-tight"
+							className="h-7 w-7 p-0 hover:bg-accent transition-colors shrink-0"
+							title={splitMode === 'single' ? '分割表示' : '単一表示'}
 						>
-							{splitMode === 'single' ? (
-								<>
-									<Columns2 className="w-3.5 h-3.5 mr-1.5" />
-									<span>分割</span>
-								</>
-							) : (
-								<>
-									<Maximize2 className="w-3.5 h-3.5 mr-1.5" />
-									<span>単一</span>
-								</>
-							)}
+							{splitMode === 'single' ? <Columns2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
 						</Button>
 					</div>
 
