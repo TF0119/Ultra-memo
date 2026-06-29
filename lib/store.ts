@@ -49,6 +49,8 @@ interface NoteStore {
 	historyIndex: number;
 	saveStatus: 'saved' | 'saving' | 'error';
 	backlinks: BacklinkNote[];
+	contentSaveSeq: Record<string, number>;
+	editorFlushByPane: { 1: (() => void) | null; 2: (() => void) | null };
 
 	initialize: () => Promise<void>;
 	refreshTree: () => Promise<void>;
@@ -89,6 +91,8 @@ interface NoteStore {
 	goBack: () => void;
 	goForward: () => void;
 	setSaveStatus: (status: 'saved' | 'saving' | 'error') => void;
+	registerEditorFlush: (paneId: 1 | 2, fn: (() => void) | null) => void;
+	flushEditorSave: (paneId?: 1 | 2) => void;
 }
 
 function mapTreeNode(raw: Record<string, unknown>): TreeNode {
@@ -133,6 +137,8 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	historyIndex: -1,
 	saveStatus: 'saved',
 	backlinks: [],
+	contentSaveSeq: {},
+	editorFlushByPane: { 1: null, 2: null },
 
 	initialize: async () => {
 		try {
@@ -285,6 +291,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 				}
 				return {
 					noteContents: { ...state.noteContents, [id]: content },
+					contentSaveSeq: { ...state.contentSaveSeq, [id]: (state.contentSaveSeq[id] ?? 0) + 1 },
 					treeNodes: state.treeNodes.map((n) =>
 						n.id === id ? { ...n, title, contentPreview: preview, contentLength: content.length, updatedAt: Date.now() } : n
 					),
@@ -604,6 +611,22 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	},
 
 	setSaveStatus: (status) => set({ saveStatus: status }),
+
+	registerEditorFlush: (paneId, fn) => {
+		set((state) => ({
+			editorFlushByPane: { ...state.editorFlushByPane, [paneId]: fn },
+		}));
+	},
+
+	flushEditorSave: (paneId) => {
+		const { editorFlushByPane } = get();
+		if (paneId) {
+			editorFlushByPane[paneId]?.();
+			return;
+		}
+		editorFlushByPane[1]?.();
+		editorFlushByPane[2]?.();
+	},
 }));
 
 function flattenVisible(nodes: TreeNode[], expanded: Set<string>, sortMode: 'manual' | 'recent'): string[] {
