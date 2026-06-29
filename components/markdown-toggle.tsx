@@ -10,10 +10,12 @@ interface MarkdownToggleProps {
 }
 
 export function MarkdownToggle({ nodeId, isMarkdownView }: MarkdownToggleProps) {
-	const { toggleMarkdownView } = useNoteStore();
+	const { toggleMarkdownView, activeNodeIds, flushEditorSave } = useNoteStore();
 
 	const handleClick = async (e: React.MouseEvent) => {
 		e.stopPropagation();
+		if (activeNodeIds[1] === nodeId) flushEditorSave(1);
+		if (activeNodeIds[2] === nodeId) flushEditorSave(2);
 		await toggleMarkdownView(nodeId);
 	};
 
