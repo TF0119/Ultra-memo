@@ -9,6 +9,7 @@ import { MarkdownToggle } from './markdown-toggle';
 import { BacklinksPanel } from './backlinks-panel';
 import { wikiLinkPlugin, wikiLinkAutocomplete, checkboxClickHandler, toggleCheckboxLine } from '@/lib/codemirror-extensions';
 import { imeCompositionGuard } from '@/lib/editor-composition';
+import { markdownContinueKeymap } from '@/lib/editor-markdown-keys';
 import { openSearchPanel } from '@codemirror/search';
 
 // CodeMirror imports
@@ -435,6 +436,7 @@ function CodeMirrorEditor({
 			markdown(),
 			themeConfig,
 			search({ top: true }),
+			markdownContinueKeymap(),
 			wikiLinkPlugin(onWikiNavigate, (t) => getNoteTitles().some((n) => n.toLowerCase() === t.toLowerCase())),
 			wikiLinkAutocomplete(getNoteTitles),
 			checkboxClickHandler((lineNum, checked) => {
