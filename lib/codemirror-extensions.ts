@@ -5,7 +5,7 @@ import { autocompletion, CompletionContext } from '@codemirror/autocomplete';
 class WikiLinkWidget extends WidgetType {
 	constructor(
 		private title: string,
-		private onClick: (title: string) => void,
+		private onClick: (title: string, openInOtherPane: boolean) => void,
 		private exists: boolean
 	) {
 		super();
@@ -22,13 +22,13 @@ class WikiLinkWidget extends WidgetType {
 		span.addEventListener('click', (e) => {
 			e.preventDefault();
 			e.stopPropagation();
-			this.onClick(this.title);
+			this.onClick(this.title, e.metaKey || e.ctrlKey);
 		});
 		return span;
 	}
 }
 
-export function wikiLinkPlugin(onNavigate: (title: string) => void, titleExists: (title: string) => boolean) {
+export function wikiLinkPlugin(onNavigate: (title: string, openInOtherPane: boolean) => void, titleExists: (title: string) => boolean) {
 	return ViewPlugin.fromClass(
 		class {
 			decorations: DecorationSet;
@@ -71,7 +71,16 @@ export function wikiLinkAutocomplete(getTitles: () => string[]) {
 				const before = context.matchBefore(/\[\[[^\]]*/);
 				if (!before) return null;
 				const query = before.text.slice(2).toLowerCase();
-				const titles = getTitles().filter((t) => t.toLowerCase().includes(query));
+				const titles = getTitles()
+					.filter((t) => t.toLowerCase().includes(query))
+					.sort((a, b) => {
+						const al = a.toLowerCase();
+						const bl = b.toLowerCase();
+						const aStarts = al.startsWith(query);
+						const bStarts = bl.startsWith(query);
+						if (aStarts !== bStarts) return aStarts ? -1 : 1;
+						return al.localeCompare(bl, 'ja');
+					});
 				return {
 					from: before.from + 2,
 					options: titles.slice(0, 20).map((t) => ({
@@ -98,6 +107,10 @@ export function checkboxClickHandler(onToggle: (line: number, checked: boolean) 
 			const line = view.state.doc.lineAt(pos);
 			const unchecked = /^(\s*)- \[ \] /.exec(line.text);
 			const checked = /^(\s*)- \[x\] /i.exec(line.text);
+			const match = unchecked ?? checked;
+			if (!match) return false;
+			const markerEnd = line.from + match[0].length;
+			if (pos > markerEnd) return false;
 			if (unchecked) {
 				onToggle(line.number, true);
 				return true;
