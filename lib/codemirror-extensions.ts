@@ -74,7 +74,16 @@ export function wikiLinkAutocomplete(getTitles: () => string[]) {
 				const titles = getTitles().filter((t) => t.toLowerCase().includes(query));
 				return {
 					from: before.from + 2,
-					options: titles.slice(0, 20).map((t) => ({ label: t, type: 'text' })),
+					options: titles.slice(0, 20).map((t) => ({
+						label: t,
+						type: 'text',
+						apply: (view, _completion, from, to) => {
+							view.dispatch({
+								changes: { from, to, insert: `${t}]]` },
+								selection: { anchor: from + t.length + 2 },
+							});
+						},
+					})),
 				};
 			},
 		],

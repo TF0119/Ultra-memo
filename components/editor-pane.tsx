@@ -138,7 +138,11 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 							<FileText className="w-14 h-14 mx-auto opacity-[0.08]" strokeWidth={1.5} />
 							<div>
 								<p className="text-sm font-medium tracking-tight">ノートが選択されていません</p>
-								<p className="text-xs mt-1.5 opacity-50 font-normal">ツリーからノートを開いてください</p>
+								<p className="text-xs mt-1.5 opacity-50 font-normal">ツリーから選ぶか、すぐ書き始められます</p>
+							</div>
+							<div className="flex flex-col gap-1.5 text-[11px] text-muted-foreground/40 pt-2">
+								<span><kbd className="px-1.5 py-0.5 bg-muted/30 border border-border/40 rounded font-mono text-[10px]">Ctrl+Shift+M</kbd> 一言メモ</span>
+								<span><kbd className="px-1.5 py-0.5 bg-muted/30 border border-border/40 rounded font-mono text-[10px]">Enter</kbd> 選択中のノートを開く</span>
 							</div>
 						</div>
 					</div>
