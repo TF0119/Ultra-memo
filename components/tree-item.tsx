@@ -123,6 +123,7 @@ export function TreeItem({
 						e.stopPropagation();
 						if (e.key === 'Enter') {
 							onCommitRename(node.id, (e.target as HTMLInputElement).value.trim() || '無題');
+							onTriggerEditorFocus();
 						} else if (e.key === 'Escape') {
 							onCancelRename();
 						}
