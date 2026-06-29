@@ -320,7 +320,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 				editingNodeId: newNode.id,
 				noteContents: { ...state.noteContents, [newNode.id]: '' },
 			}));
-			await get().openNote(newNode.id, get().focusedPane);
+			await get().openNote(newNode.id, get().focusedPane, false);
 		} catch (error) {
 			console.error('Failed to create sibling:', error);
 		}
@@ -341,7 +341,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 					noteContents: { ...state.noteContents, [newNode.id]: '' },
 				};
 			});
-			await get().openNote(newNode.id, get().focusedPane);
+			await get().openNote(newNode.id, get().focusedPane, false);
 		} catch (error) {
 			console.error('Failed to create child:', error);
 		}
