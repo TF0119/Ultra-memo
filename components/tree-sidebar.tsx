@@ -188,9 +188,27 @@ export function TreeSidebar() {
 					const idx = displayedNodes.findIndex((n) => n.node.id === selectedNode.parentId);
 					if (idx !== -1) rowVirtualizer.scrollToIndex(idx, { align: 'auto' });
 				}
+			} else if (e.key === ' ' && selectedNode?.hasChildren) {
+				e.preventDefault();
+				toggleExpanded(selectedNodeId);
 			} else if (e.key === 'Delete' || e.key === 'Backspace') {
 				e.preventDefault();
 				if (confirm('削除しますか？')) deleteNote(selectedNodeId);
+			} else if (e.key === 'Home') {
+				e.preventDefault();
+				const flat = displayedNodes.map((n) => n.node.id);
+				if (flat.length) {
+					selectNode(flat[0]);
+					rowVirtualizer.scrollToIndex(0, { align: 'auto' });
+				}
+			} else if (e.key === 'End') {
+				e.preventDefault();
+				const flat = displayedNodes.map((n) => n.node.id);
+				if (flat.length) {
+					const last = flat.length - 1;
+					selectNode(flat[last]);
+					rowVirtualizer.scrollToIndex(last, { align: 'auto' });
+				}
 			} else if (e.key === 'ArrowDown') {
 				e.preventDefault();
 				const flat = displayedNodes.map((n) => n.node.id);
@@ -243,6 +261,12 @@ export function TreeSidebar() {
 							placeholder="検索..."
 							value={searchQuery}
 							onChange={(e) => setSearchQuery(e.target.value)}
+							onKeyDown={(e) => {
+								if (e.key === 'Escape' && searchQuery) {
+									e.stopPropagation();
+									setSearchQuery('');
+								}
+							}}
 							className="pl-8 h-8 text-sm bg-background/80 border-border/80"
 						/>
 					</div>

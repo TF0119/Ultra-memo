@@ -52,7 +52,10 @@ export function TreeItem({
 	onDelete,
 	onTogglePin,
 }: TreeItemProps) {
-	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: node.id });
+	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+		id: node.id,
+		disabled: isEditing,
+	});
 	const inputRef = useRef<HTMLInputElement>(null);
 
 	useEffect(() => {
