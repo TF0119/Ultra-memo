@@ -300,18 +300,11 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	patchLocalContent: (id, content) => {
 		set((state) => {
 			const preview = content.slice(0, 80);
-			const node = state.treeNodes.find((n) => n.id === id);
-			let title = node?.title ?? '無題';
-			if (node && isPlaceholderTitle(title)) {
-				const firstLine = content.split('\n').find((l) => l.trim());
-				if (firstLine) {
-					title = firstLine.trim().replace(/^#+\s*/, '').replace(/^- \[[ x]\]\s*/, '').slice(0, 40);
-				}
-			}
+			// Live preview only — title auto-renames on save to avoid jitter while typing
 			return {
 				noteContents: { ...state.noteContents, [id]: content },
 				treeNodes: state.treeNodes.map((n) =>
-					n.id === id ? { ...n, title, contentPreview: preview, contentLength: content.length } : n
+					n.id === id ? { ...n, contentPreview: preview, contentLength: content.length } : n
 				),
 			};
 		});
