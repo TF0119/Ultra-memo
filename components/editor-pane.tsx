@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useNoteStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { FileText } from 'lucide-react';
@@ -185,6 +185,25 @@ function CodeMirrorEditor({
 	const [isDirty, setIsDirty] = useState(false);
 	const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 	const isSyncingRef = useRef(false);
+	const isDirtyRef = useRef(false);
+	const onSaveRef = useRef(onSave);
+
+	useEffect(() => {
+		onSaveRef.current = onSave;
+	}, [onSave]);
+
+	const flushSave = useCallback(() => {
+		if (saveTimeoutRef.current) {
+			clearTimeout(saveTimeoutRef.current);
+			saveTimeoutRef.current = null;
+		}
+		if (isDirtyRef.current && viewRef.current) {
+			const contentToSave = viewRef.current.state.doc.toString();
+			onSaveRef.current(contentToSave);
+			isDirtyRef.current = false;
+			setIsDirty(false);
+		}
+	}, []);
 
 	// WYSIWYG Markdown decorations plugin
 	const wysiwygPlugin = useMemo(() => {
@@ -465,6 +484,7 @@ function CodeMirrorEditor({
 				},
 			]),
 			...imeCompositionGuard((doc) => {
+				isDirtyRef.current = true;
 				setIsDirty(true);
 				useNoteStore.getState().patchLocalContent(activeNodeId, doc);
 			}),
@@ -498,9 +518,10 @@ function CodeMirrorEditor({
 
 		return () => {
 			view.scrollDOM.removeEventListener('scroll', handleScroll);
+			flushSave();
 			view.destroy();
 		};
-	}, [isMarkdownView, isSyncScrollEnabled, onScrollSync, paneId, onWikiNavigate, getNoteTitles]);
+	}, [isMarkdownView, isSyncScrollEnabled, onScrollSync, paneId, onWikiNavigate, getNoteTitles, flushSave]);
 
 	// Apply synced scroll from the other pane
 	useEffect(() => {
@@ -539,28 +560,42 @@ function CodeMirrorEditor({
 		}
 	}, [activeNodeId]);
 
-	// Save effect
+	// Save effect (debounced)
 	useEffect(() => {
 		if (isDirty && viewRef.current) {
-			if (saveTimeoutRef.current) {
-				clearTimeout(saveTimeoutRef.current);
-			}
-
+			if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 			const contentToSave = viewRef.current.state.doc.toString();
 			saveTimeoutRef.current = setTimeout(() => {
-				onSave(contentToSave);
+				onSaveRef.current(contentToSave);
+				isDirtyRef.current = false;
 				setIsDirty(false);
-			}, 500);
+			}, 400);
 		}
-
 		return () => {
-			if (saveTimeoutRef.current) {
-				clearTimeout(saveTimeoutRef.current);
-			}
+			if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 		};
-	}, [isDirty, onSave]);
+	}, [isDirty]);
 
-	return <div ref={editorRef} className="h-full w-full" onFocus={onFocus} />;
+	// Flush on window blur / before close
+	useEffect(() => {
+		const onBlur = () => flushSave();
+		const onBeforeUnload = () => flushSave();
+		window.addEventListener('blur', onBlur);
+		window.addEventListener('beforeunload', onBeforeUnload);
+		return () => {
+			window.removeEventListener('blur', onBlur);
+			window.removeEventListener('beforeunload', onBeforeUnload);
+		};
+	}, [flushSave]);
+
+	return (
+		<div
+			ref={editorRef}
+			className="h-full w-full"
+			onFocus={onFocus}
+			onBlur={() => flushSave()}
+		/>
+	);
 }
 
 // Widget classes for WYSIWYG rendering
