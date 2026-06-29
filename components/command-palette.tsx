@@ -65,9 +65,10 @@ export function CommandPalette({ isOpen, onClose, onOpenSearch, splitMode, setSp
 					const pane = store.focusedPane;
 					const activeId = store.activeNodeIds[pane];
 					if (activeId) {
+						store.flushEditorSave(pane);
 						const existing = store.noteContents[activeId] ?? '';
 						const content = existing.trim() ? `${existing}\n\n${applyTemplate(t)}` : applyTemplate(t);
-						store.updateNoteContent(activeId, content);
+						void store.updateNoteContent(activeId, content);
 					}
 				},
 			})),
@@ -115,6 +116,7 @@ export function CommandPalette({ isOpen, onClose, onOpenSearch, splitMode, setSp
 				onClose();
 			} else if (e.key === 'ArrowDown') {
 				e.preventDefault();
+				if (flatItems.length === 0) return;
 				setSelectedIndex((i) => Math.min(i + 1, flatItems.length - 1));
 			} else if (e.key === 'ArrowUp') {
 				e.preventDefault();
