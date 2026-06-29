@@ -389,14 +389,15 @@ export function TreeSidebar() {
 				</DragOverlay>
 			</DndContext>
 
-			<div className="px-4 py-1.5 border-t border-sidebar-border text-[10px] text-muted-foreground flex-shrink-0 bg-sidebar/60 font-medium tracking-tight flex justify-between">
+			<div className="px-4 py-1.5 border-t border-sidebar-border text-[10px] text-muted-foreground flex-shrink-0 bg-sidebar/60 font-medium tracking-tight flex justify-between gap-2">
 				<span>{treeNodes.length} items{selectedNodeIds.size > 1 ? ` · ${selectedNodeIds.size} 選択` : ''}</span>
-				<span className="opacity-50">
+				<span className="opacity-50 text-right truncate">
 					{sortMode === 'recent' ? '新しい順' : '手動順'}
 					{selectedNodeId && sortMode === 'recent' && (() => {
 						const n = treeNodes.find((x) => x.id === selectedNodeId);
 						return n ? ` · ${formatRelativeTime(n.updatedAt)}` : '';
 					})()}
+					<span className="hidden lg:inline"> · ←→ Space · Del</span>
 				</span>
 			</div>
 		</div>
