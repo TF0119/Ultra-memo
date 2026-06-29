@@ -255,15 +255,11 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 
 	openNote: async (id, paneId, shouldFocusEditor = true, skipHistory = false) => {
 		get().flushEditorSave();
-		try {
-			const [content] = await Promise.all([
-				get().loadNoteContent(id),
-				invoke('touch_open', { id }),
-			]);
-			void content;
-			const openNodes = await invoke<string[]>('get_open_list', { limit: 50 });
-			get().loadBacklinks(id);
+		const prior = get();
+		const alreadyOpen =
+			prior.activeNodeIds[paneId] === id && prior.noteContents[id] !== undefined && !prior.failedNoteIds.has(id);
 
+		const applyOpenState = (openNodes: string[]) => {
 			set((state) => {
 				const newExpanded = new Set(state.expandedNodeIds);
 				const findAndExpandParents = (nodeId: string) => {
@@ -299,6 +295,22 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 					historyIndex: newHistoryIndex,
 				};
 			});
+		};
+
+		try {
+			if (alreadyOpen) {
+				const openNodes = await invoke<string[]>('get_open_list', { limit: 50 });
+				await invoke('touch_open', { id });
+				get().loadBacklinks(id);
+				applyOpenState(openNodes);
+				return;
+			}
+
+			const [content] = await Promise.all([get().loadNoteContent(id), invoke('touch_open', { id })]);
+			void content;
+			const openNodes = await invoke<string[]>('get_open_list', { limit: 50 });
+			get().loadBacklinks(id);
+			applyOpenState(openNodes);
 		} catch (error) {
 			console.error('Failed to open note:', error);
 		}
