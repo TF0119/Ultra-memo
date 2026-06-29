@@ -10,6 +10,8 @@ import { BacklinksPanel } from './backlinks-panel';
 import { wikiLinkPlugin, wikiLinkAutocomplete, checkboxClickHandler } from '@/lib/codemirror-extensions';
 import { imeCompositionGuard } from '@/lib/editor-composition';
 import { markdownContinueKeymap } from '@/lib/editor-markdown-keys';
+import { markdownFormatKeymap } from '@/lib/editor-format-keys';
+import { markdownAutoBullet } from '@/lib/editor-auto-input';
 import { editorPlaceholder } from '@/lib/editor-placeholder';
 import { typewriterScrollExtension } from '@/lib/editor-typewriter';
 import { saveEditorSession, restoreEditorSession } from '@/lib/editor-session';
@@ -34,18 +36,16 @@ import {
 import { EditorState, RangeSetBuilder } from '@codemirror/state';
 import { indentWithTab, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
-import { oneDark } from '@codemirror/theme-one-dark';
-import { bracketMatching, indentOnInput, syntaxHighlighting, defaultHighlightStyle, HighlightStyle } from '@codemirror/language';
+import { bracketMatching, indentOnInput } from '@codemirror/language';
 import { search, searchKeymap } from '@codemirror/search';
-import { autocompletion, completionKeymap } from '@codemirror/autocomplete';
-import { syntaxTree } from '@codemirror/language';
+import { completionKeymap } from '@codemirror/autocomplete';
 
 interface EditorPaneProps {
 	paneId: 1 | 2;
 }
 
 export function EditorPane({ paneId }: EditorPaneProps) {
-	const { treeNodes, activeNodeIds, focusedPane, noteContents, loadingNoteIds, updateNoteContent, patchLocalContent, setFocusedPane, setSaveStatus, openNote, openWikiLink, isSyncScrollEnabled, syncScrollRatio, syncScrollSource, setSyncScrollRatio, isZenMode } =
+	const { treeNodes, activeNodeIds, focusedPane, noteContents, loadingNoteIds, failedNoteIds, updateNoteContent, patchLocalContent, setFocusedPane, setSaveStatus, openNote, openWikiLink, retryLoadNote, isSyncScrollEnabled, syncScrollRatio, syncScrollSource, setSyncScrollRatio, isZenMode } =
 		useNoteStore();
 
 	const activeNodeId = activeNodeIds[paneId];
@@ -53,6 +53,7 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 	const isFocused = focusedPane === paneId;
 	const content = activeNodeId ? (noteContents[activeNodeId] ?? '') : '';
 	const isLoading = activeNodeId ? loadingNoteIds.has(activeNodeId) && noteContents[activeNodeId] === undefined : false;
+	const loadFailed = activeNodeId ? failedNoteIds.has(activeNodeId) : false;
 
 	const getBreadcrumb = (nodeId: string): { id: string; title: string }[] => {
 		const path: { id: string; title: string }[] = [];
@@ -82,6 +83,7 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 							{index > 0 && <span className="opacity-30">/</span>}
 							<button
 								type="button"
+								title={item.title}
 								onClick={(e) => {
 									e.stopPropagation();
 									openNote(item.id, paneId, false);
@@ -105,7 +107,18 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 			<BacklinksPanel paneId={paneId} />
 
 			<div className="flex-1 relative overflow-hidden">
-				{isLoading ? (
+				{loadFailed ? (
+					<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-3 bg-black">
+						<p className="text-sm">読み込みに失敗しました</p>
+						<button
+							type="button"
+							className="text-xs px-3 py-1.5 rounded border border-border/50 hover:bg-muted/30 transition-colors"
+							onClick={() => activeNodeId && retryLoadNote(activeNodeId)}
+						>
+							再試行
+						</button>
+					</div>
+				) : isLoading ? (
 					<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-3 bg-black">
 						<div className="w-5 h-5 border-2 border-white/10 border-t-white/50 rounded-full animate-spin" />
 						<span className="text-xs opacity-50">読み込み中...</span>
@@ -121,7 +134,10 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 						syncScrollRatio={syncScrollRatio}
 						syncScrollSource={syncScrollSource}
 						onScrollSync={setSyncScrollRatio}
-						onWikiNavigate={(title) => openWikiLink(title, paneId)}
+						onWikiNavigate={(title, openInOtherPane) => {
+							const targetPane = openInOtherPane ? ((paneId === 1 ? 2 : 1) as 1 | 2) : paneId;
+							openWikiLink(title, targetPane);
+						}}
 						getNoteTitles={() => treeNodes.map((n) => n.title)}
 						isZenMode={isZenMode}
 						onSave={(c) => {
@@ -144,6 +160,7 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 							<div className="flex flex-col gap-1.5 text-[11px] text-muted-foreground/40 pt-2">
 								<span><kbd className="px-1.5 py-0.5 bg-muted/30 border border-border/40 rounded font-mono text-[10px]">Ctrl+Shift+M</kbd> 一言メモ</span>
 								<span><kbd className="px-1.5 py-0.5 bg-muted/30 border border-border/40 rounded font-mono text-[10px]">Ctrl+P</kbd> ノート検索</span>
+								<span><kbd className="px-1.5 py-0.5 bg-muted/30 border border-border/40 rounded font-mono text-[10px]">Ctrl+Shift+P</kbd> コマンド</span>
 								<span><kbd className="px-1.5 py-0.5 bg-muted/30 border border-border/40 rounded font-mono text-[10px]">Enter</kbd> 選択中のノートを開く</span>
 							</div>
 						</div>
@@ -181,7 +198,7 @@ function CodeMirrorEditor({
 	syncScrollRatio: number;
 	syncScrollSource: 1 | 2 | null;
 	onScrollSync: (ratio: number, source: 1 | 2) => void;
-	onWikiNavigate: (title: string) => void;
+	onWikiNavigate: (title: string, openInOtherPane?: boolean) => void;
 	getNoteTitles: () => string[];
 	isZenMode: boolean;
 }) {
@@ -196,6 +213,7 @@ function CodeMirrorEditor({
 	const isDirtyRef = useRef(false);
 	const onSaveRef = useRef(onSave);
 	const previewTimerRef = useRef<NodeJS.Timeout | null>(null);
+	const lastSavedContentRef = useRef(content);
 
 	const schedulePreview = useCallback(
 		(doc: string) => {
@@ -224,9 +242,18 @@ function CodeMirrorEditor({
 		if (isDirtyRef.current && viewRef.current) {
 			saveEditorSession(activeNodeId, viewRef.current);
 			const contentToSave = viewRef.current.state.doc.toString();
+			if (contentToSave === lastSavedContentRef.current) {
+				markSaved();
+				return;
+			}
 			const result = onSaveRef.current(contentToSave);
 			if (result && typeof (result as Promise<void>).then === 'function') {
-				(result as Promise<void>).then(markSaved).catch(() => {});
+				(result as Promise<void>)
+					.then(() => {
+						lastSavedContentRef.current = contentToSave;
+						markSaved();
+					})
+					.catch(() => {});
 			} else {
 				markSaved();
 			}
@@ -479,7 +506,6 @@ function CodeMirrorEditor({
 			EditorState.allowMultipleSelections.of(true),
 			indentOnInput(),
 			bracketMatching(),
-			autocompletion(),
 			rectangularSelection(),
 			highlightActiveLine(),
 			highlightSpecialChars(),
@@ -488,6 +514,8 @@ function CodeMirrorEditor({
 			themeConfig,
 			search({ top: true }),
 			markdownContinueKeymap(),
+			markdownFormatKeymap(),
+			markdownAutoBullet(),
 			editorPlaceholder(),
 			typewriterScrollExtension(() => isZenMode && isFocused),
 			wikiLinkPlugin(onWikiNavigate, (t) => getNoteTitles().some((n) => n.toLowerCase() === t.toLowerCase())),
@@ -619,16 +647,30 @@ function CodeMirrorEditor({
 		return () => useNoteStore.getState().registerEditorFlush(paneId, null);
 	}, [paneId, flushSave]);
 
+	useEffect(() => {
+		lastSavedContentRef.current = content;
+	}, [activeNodeId, content]);
+
 	// Save effect (debounced)
 	useEffect(() => {
 		if (isDirty && viewRef.current) {
 			if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 			const contentToSave = viewRef.current.state.doc.toString();
+			if (contentToSave === lastSavedContentRef.current) {
+				markSaved();
+				return;
+			}
 			saveTimeoutRef.current = setTimeout(() => {
 				const result = onSaveRef.current(contentToSave);
 				if (result && typeof (result as Promise<void>).then === 'function') {
-					(result as Promise<void>).then(markSaved).catch(() => {});
+					(result as Promise<void>)
+						.then(() => {
+							lastSavedContentRef.current = contentToSave;
+							markSaved();
+						})
+						.catch(() => {});
 				} else {
+					lastSavedContentRef.current = contentToSave;
 					markSaved();
 				}
 			}, 400);
