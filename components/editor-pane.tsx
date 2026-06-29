@@ -495,6 +495,13 @@ function CodeMirrorEditor({
 						return true;
 					},
 				},
+				{
+					key: 'Mod-s',
+					run: () => {
+						flushSave();
+						return true;
+					},
+				},
 			]),
 			...imeCompositionGuard((doc) => {
 				isDirtyRef.current = true;
