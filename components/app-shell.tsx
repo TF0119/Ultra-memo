@@ -28,6 +28,9 @@ export function AppShell() {
 		setCommandPaletteOpen,
 		expandAll,
 		collapseAll,
+		goBack,
+		goForward,
+		setFocusedPane,
 	} = useNoteStore();
 
 	useEffect(() => {
@@ -47,6 +50,7 @@ export function AppShell() {
 			}
 
 			if (e.ctrlKey && e.shiftKey && (e.key === 'm' || e.key === 'M')) {
+				if (inEditor) return;
 				e.preventDefault();
 				quickCapture();
 				return;
@@ -76,24 +80,36 @@ export function AppShell() {
 			}
 
 			if (e.ctrlKey && !e.shiftKey && e.key === 'n') {
+				if (inEditor) return;
 				e.preventDefault();
 				if (selectedNodeId) createSibling(selectedNodeId);
 				else createChild(null);
 			}
 
 			if (e.ctrlKey && e.shiftKey && e.key === 'N') {
+				if (inEditor) return;
 				e.preventDefault();
 				createChild(selectedNodeId);
 			}
 
 			if (e.ctrlKey && e.key === '1') {
 				e.preventDefault();
-				useNoteStore.setState({ focusedPane: 1 });
+				setFocusedPane(1);
 			}
 
 			if (e.ctrlKey && e.key === '2') {
 				e.preventDefault();
-				useNoteStore.setState({ focusedPane: 2 });
+				setFocusedPane(2);
+			}
+
+			if (e.altKey && e.key === 'ArrowLeft' && !inEditor && !inInput && !isQuickSwitcherOpen && !isCommandPaletteOpen) {
+				e.preventDefault();
+				goBack();
+			}
+
+			if (e.altKey && e.key === 'ArrowRight' && !inEditor && !inInput && !isQuickSwitcherOpen && !isCommandPaletteOpen) {
+				e.preventDefault();
+				goForward();
 			}
 
 			if (e.key === 'Enter' && !e.ctrlKey && selectedNodeId && !inEditor && !inInput && !isQuickSwitcherOpen && !isCommandPaletteOpen) {
@@ -124,6 +140,9 @@ export function AppShell() {
 		expandAll,
 		collapseAll,
 		setCommandPaletteOpen,
+		goBack,
+		goForward,
+		setFocusedPane,
 	]);
 
 	const handleResize = useCallback((e: MouseEvent) => {
