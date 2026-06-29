@@ -7,11 +7,12 @@ import { FileText } from 'lucide-react';
 import { StatusIndicator } from './status-indicator';
 import { MarkdownToggle } from './markdown-toggle';
 import { BacklinksPanel } from './backlinks-panel';
-import { wikiLinkPlugin, wikiLinkAutocomplete, checkboxClickHandler, toggleCheckboxLine } from '@/lib/codemirror-extensions';
+import { wikiLinkPlugin, wikiLinkAutocomplete, checkboxClickHandler } from '@/lib/codemirror-extensions';
 import { imeCompositionGuard } from '@/lib/editor-composition';
 import { markdownContinueKeymap } from '@/lib/editor-markdown-keys';
 import { editorPlaceholder } from '@/lib/editor-placeholder';
 import { typewriterScrollExtension } from '@/lib/editor-typewriter';
+import { saveEditorSession, restoreEditorSession } from '@/lib/editor-session';
 import { openSearchPanel } from '@codemirror/search';
 
 // CodeMirror imports
@@ -142,6 +143,7 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 							</div>
 							<div className="flex flex-col gap-1.5 text-[11px] text-muted-foreground/40 pt-2">
 								<span><kbd className="px-1.5 py-0.5 bg-muted/30 border border-border/40 rounded font-mono text-[10px]">Ctrl+Shift+M</kbd> 一言メモ</span>
+								<span><kbd className="px-1.5 py-0.5 bg-muted/30 border border-border/40 rounded font-mono text-[10px]">Ctrl+P</kbd> ノート検索</span>
 								<span><kbd className="px-1.5 py-0.5 bg-muted/30 border border-border/40 rounded font-mono text-[10px]">Enter</kbd> 選択中のノートを開く</span>
 							</div>
 						</div>
@@ -183,7 +185,8 @@ function CodeMirrorEditor({
 	getNoteTitles: () => string[];
 	isZenMode: boolean;
 }) {
-	const { focusTarget } = useNoteStore();
+	const { focusTarget, contentSaveSeq } = useNoteStore();
+	const savedContentSeq = contentSaveSeq[activeNodeId] ?? 0;
 	const consumedTriggerRef = useRef(focusTarget.trigger);
 	const editorRef = useRef<HTMLDivElement>(null);
 	const viewRef = useRef<EditorView | null>(null);
@@ -219,6 +222,7 @@ function CodeMirrorEditor({
 			saveTimeoutRef.current = null;
 		}
 		if (isDirtyRef.current && viewRef.current) {
+			saveEditorSession(activeNodeId, viewRef.current);
 			const contentToSave = viewRef.current.state.doc.toString();
 			const result = onSaveRef.current(contentToSave);
 			if (result && typeof (result as Promise<void>).then === 'function') {
@@ -227,7 +231,7 @@ function CodeMirrorEditor({
 				markSaved();
 			}
 		}
-	}, [markSaved]);
+	}, [markSaved, activeNodeId]);
 
 	// WYSIWYG Markdown decorations plugin
 	const wysiwygPlugin = useMemo(() => {
@@ -491,9 +495,16 @@ function CodeMirrorEditor({
 			checkboxClickHandler((lineNum, checked) => {
 				const view = viewRef.current;
 				if (!view) return;
-				const newDoc = toggleCheckboxLine(view.state.doc.toString(), lineNum, checked);
-				view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: newDoc } });
+				const line = view.state.doc.line(lineNum);
+				const text = line.text;
+				const newLine = checked
+					? text.replace(/^(\s*)- \[ \] /, '$1- [x] ')
+					: text.replace(/^(\s*)- \[[xX]\] /, '$1- [ ] ');
+				if (newLine === text) return;
+				view.dispatch({ changes: { from: line.from, to: line.to, insert: newLine } });
+				isDirtyRef.current = true;
 				setIsDirty(true);
+				schedulePreview(view.state.doc.toString());
 			}),
 			keymap.of([
 				...historyKeymap,
@@ -539,6 +550,13 @@ function CodeMirrorEditor({
 
 		viewRef.current = view;
 
+		if (!restoreEditorSession(activeNodeId, view)) {
+			if (content === '') {
+				const end = view.state.doc.length;
+				view.dispatch({ selection: { anchor: end, head: end } });
+			}
+		}
+
 		const handleScroll = () => {
 			if (!isSyncScrollEnabled || isSyncingRef.current) return;
 			const scroller = view.scrollDOM;
@@ -551,10 +569,11 @@ function CodeMirrorEditor({
 		return () => {
 			view.scrollDOM.removeEventListener('scroll', handleScroll);
 			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+			saveEditorSession(activeNodeId, view);
 			flushSave();
 			view.destroy();
 		};
-	}, [isMarkdownView, isSyncScrollEnabled, onScrollSync, paneId, onWikiNavigate, getNoteTitles, flushSave, schedulePreview, isZenMode, isFocused]);
+	}, [isMarkdownView, isSyncScrollEnabled, onScrollSync, paneId, onWikiNavigate, getNoteTitles, flushSave, schedulePreview, isZenMode, isFocused, activeNodeId, content]);
 
 	// Apply synced scroll from the other pane
 	useEffect(() => {
@@ -571,27 +590,34 @@ function CodeMirrorEditor({
 		});
 	}, [syncScrollRatio, syncScrollSource, isSyncScrollEnabled, paneId]);
 
-	// Focus effect: place cursor at end and focus editor
+	// Focus editor when triggered; only jump to end for empty notes
 	useEffect(() => {
 		if (isFocused && viewRef.current && focusTarget.nodeId === activeNodeId && focusTarget.paneId === paneId) {
 			if (focusTarget.trigger > consumedTriggerRef.current) {
 				const view = viewRef.current;
-				const end = view.state.doc.length;
-				view.dispatch({ selection: { anchor: end, head: end } });
+				if (view.state.doc.length === 0) {
+					view.dispatch({ selection: { anchor: 0, head: 0 } });
+				}
 				view.focus();
 				consumedTriggerRef.current = focusTarget.trigger;
 			}
 		}
 	}, [isFocused, focusTarget, activeNodeId, paneId]);
 
-	// On mount with empty new note, cursor at end
+	// Sync external content (templates, etc.) when saved from outside while editor is clean
 	useEffect(() => {
-		if (viewRef.current && content === '') {
-			const view = viewRef.current;
-			const end = view.state.doc.length;
-			view.dispatch({ selection: { anchor: end, head: end } });
+		const view = viewRef.current;
+		if (!view || isDirtyRef.current) return;
+		const doc = view.state.doc.toString();
+		if (content !== doc) {
+			view.dispatch({ changes: { from: 0, to: doc.length, insert: content } });
 		}
-	}, [activeNodeId]);
+	}, [savedContentSeq, content, activeNodeId]);
+
+	useEffect(() => {
+		useNoteStore.getState().registerEditorFlush(paneId, flushSave);
+		return () => useNoteStore.getState().registerEditorFlush(paneId, null);
+	}, [paneId, flushSave]);
 
 	// Save effect (debounced)
 	useEffect(() => {
