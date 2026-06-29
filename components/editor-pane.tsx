@@ -11,6 +11,7 @@ import { wikiLinkPlugin, wikiLinkAutocomplete, checkboxClickHandler, toggleCheck
 import { imeCompositionGuard } from '@/lib/editor-composition';
 import { markdownContinueKeymap } from '@/lib/editor-markdown-keys';
 import { editorPlaceholder } from '@/lib/editor-placeholder';
+import { typewriterScrollExtension } from '@/lib/editor-typewriter';
 import { openSearchPanel } from '@codemirror/search';
 
 // CodeMirror imports
@@ -187,6 +188,17 @@ function CodeMirrorEditor({
 	const isSyncingRef = useRef(false);
 	const isDirtyRef = useRef(false);
 	const onSaveRef = useRef(onSave);
+	const previewTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+	const schedulePreview = useCallback(
+		(doc: string) => {
+			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+			previewTimerRef.current = setTimeout(() => {
+				useNoteStore.getState().patchLocalContent(activeNodeId, doc);
+			}, 350);
+		},
+		[activeNodeId]
+	);
 
 	useEffect(() => {
 		onSaveRef.current = onSave;
@@ -461,6 +473,7 @@ function CodeMirrorEditor({
 			search({ top: true }),
 			markdownContinueKeymap(),
 			editorPlaceholder(),
+			typewriterScrollExtension(() => isZenMode && isFocused),
 			wikiLinkPlugin(onWikiNavigate, (t) => getNoteTitles().some((n) => n.toLowerCase() === t.toLowerCase())),
 			wikiLinkAutocomplete(getNoteTitles),
 			checkboxClickHandler((lineNum, checked) => {
@@ -486,7 +499,7 @@ function CodeMirrorEditor({
 			...imeCompositionGuard((doc) => {
 				isDirtyRef.current = true;
 				setIsDirty(true);
-				useNoteStore.getState().patchLocalContent(activeNodeId, doc);
+				schedulePreview(doc);
 			}),
 		];
 
@@ -518,10 +531,11 @@ function CodeMirrorEditor({
 
 		return () => {
 			view.scrollDOM.removeEventListener('scroll', handleScroll);
+			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
 			flushSave();
 			view.destroy();
 		};
-	}, [isMarkdownView, isSyncScrollEnabled, onScrollSync, paneId, onWikiNavigate, getNoteTitles, flushSave]);
+	}, [isMarkdownView, isSyncScrollEnabled, onScrollSync, paneId, onWikiNavigate, getNoteTitles, flushSave, schedulePreview, isZenMode, isFocused]);
 
 	// Apply synced scroll from the other pane
 	useEffect(() => {
