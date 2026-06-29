@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { useEffect, useState, useRef } from 'react';
 
 export function StatusIndicator() {
-	const { saveStatus } = useNoteStore();
+	const { saveStatus, flushEditorSave } = useNoteStore();
 	const [displayStatus, setDisplayStatus] = useState<'saved' | 'saving' | 'error'>('saved');
 	const [blink, setBlink] = useState(false);
 	const savingTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -51,10 +51,26 @@ export function StatusIndicator() {
 
 	// Always visible - no hide logic
 	return (
-		<div className="flex items-center justify-center flex-shrink-0" title={displayStatus === 'saving' ? '保存中...' : displayStatus === 'saved' ? '保存済み' : '保存エラー'}>
+		<button
+			type="button"
+			className={cn(
+				'flex items-center justify-center flex-shrink-0',
+				displayStatus === 'error' && 'cursor-pointer hover:opacity-80'
+			)}
+			title={
+				displayStatus === 'saving'
+					? '保存中...'
+					: displayStatus === 'saved'
+						? '保存済み'
+						: '保存エラー — クリックで再試行'
+			}
+			onClick={() => {
+				if (displayStatus === 'error') flushEditorSave();
+			}}
+		>
 			{displayStatus === 'saving' && <div className="w-1.5 h-1.5 rounded-full border border-orange-500 border-t-transparent animate-spin" />}
 			{displayStatus === 'saved' && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
 			{displayStatus === 'error' && <div className={cn('w-1.5 h-1.5 rounded-full bg-red-500 transition-opacity duration-200', blink ? 'opacity-100' : 'opacity-30')} />}
-		</div>
+		</button>
 	);
 }
