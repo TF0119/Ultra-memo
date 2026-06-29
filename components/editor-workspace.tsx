@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useRef } from "react"
 import { EditorPane } from "./editor-pane"
-import { useNoteStore } from "@/lib/store"
 import { loadSplitPosition, saveSplitPosition } from "@/lib/preferences"
 
 export function EditorWorkspace({
@@ -15,7 +14,6 @@ export function EditorWorkspace({
   const [splitPosition, setSplitPosition] = useState(loadSplitPosition)
   const splitPositionRef = useRef(splitPosition)
   splitPositionRef.current = splitPosition
-  const { activeNodeIds, focusedPane } = useNoteStore()
 
   const handleResize = useCallback((e: MouseEvent) => {
     const container = document.getElementById("editor-container")
