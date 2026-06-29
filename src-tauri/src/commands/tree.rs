@@ -8,7 +8,8 @@ pub struct TreeNode {
     pub id: String,
     pub parent_id: Option<String>,
     pub title: String,
-    pub content: String,
+    pub content_preview: String,
+    pub content_length: usize,
     pub order_key: f64,
     pub is_open: bool,
     pub is_pinned: bool,
@@ -25,7 +26,10 @@ pub fn get_tree_snapshot(state: State<'_, AppState>) -> Result<Vec<TreeNode>, St
     // Fetch nodes with has_children check
     let mut stmt = conn.prepare(
         "SELECT 
-            n.id, n.parent_id, n.title, n.content, n.order_key, n.is_open, n.is_pinned, n.is_markdown_view, n.created_at, n.updated_at,
+            n.id, n.parent_id, n.title,
+            CASE WHEN length(n.content) > 0 THEN substr(trim(n.content), 1, 80) ELSE '' END,
+            length(n.content),
+            n.order_key, n.is_open, n.is_pinned, n.is_markdown_view, n.created_at, n.updated_at,
             EXISTS(SELECT 1 FROM notes c WHERE c.parent_id = n.id AND c.is_deleted = 0) as has_children
          FROM notes n
          WHERE n.is_deleted = 0
@@ -37,14 +41,15 @@ pub fn get_tree_snapshot(state: State<'_, AppState>) -> Result<Vec<TreeNode>, St
             id: row.get::<_, i64>(0)?.to_string(),
             parent_id: row.get::<_, Option<i64>>(1)?.map(|id| id.to_string()),
             title: row.get(2)?,
-            content: row.get(3)?,
-            order_key: row.get(4)?,
-            is_open: row.get::<_, i64>(5)? != 0,
-            is_pinned: row.get::<_, i64>(6)? != 0,
-            is_markdown_view: row.get::<_, i64>(7)? != 0,
-            created_at: row.get(8)?,
-            updated_at: row.get(9)?,
-            has_children: row.get::<_, i64>(10)? != 0,
+            content_preview: row.get(3)?,
+            content_length: row.get::<_, i64>(4)? as usize,
+            order_key: row.get(5)?,
+            is_open: row.get::<_, i64>(6)? != 0,
+            is_pinned: row.get::<_, i64>(7)? != 0,
+            is_markdown_view: row.get::<_, i64>(8)? != 0,
+            created_at: row.get(9)?,
+            updated_at: row.get(10)?,
+            has_children: row.get::<_, i64>(11)? != 0,
         })
     }).map_err(|e| e.to_string())?;
 

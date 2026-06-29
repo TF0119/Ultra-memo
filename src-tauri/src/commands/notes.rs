@@ -52,6 +52,16 @@ pub fn update_note(
     }
     if let Some(c) = content {
         conn.execute("UPDATE notes SET content = ?, updated_at = ? WHERE id = ?", params![c, now, id_int]).map_err(|e| e.to_string())?;
+        // Auto-title from first line when title is placeholder
+        let current_title: String = conn
+            .query_row("SELECT title FROM notes WHERE id = ?", [id_int], |row| row.get(0))
+            .map_err(|e| e.to_string())?;
+        if is_placeholder_title(&current_title) {
+            if let Some(auto_title) = title_from_content(&c) {
+                conn.execute("UPDATE notes SET title = ? WHERE id = ?", params![auto_title, id_int])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
     }
 
     Ok(now)
@@ -92,7 +102,7 @@ pub fn create_sibling(state: State<'_, AppState>, selected_id: String) -> Result
     tx.execute(
         "INSERT INTO notes (parent_id, title, content, order_key, is_open, is_deleted, created_at, updated_at) 
          VALUES (?, ?, ?, ?, 0, 0, ?, ?)",
-        params![parent_id, "New Note", "", new_order, now, now]
+        params![parent_id, "無題", "", new_order, now, now]
     ).map_err(|e| e.to_string())?;
 
     let new_id = tx.last_insert_rowid();
@@ -101,8 +111,9 @@ pub fn create_sibling(state: State<'_, AppState>, selected_id: String) -> Result
     Ok(TreeNode {
         id: new_id.to_string(),
         parent_id: parent_id.map(|id| id.to_string()),
-        title: "New Note".to_string(),
-        content: "".to_string(),
+        title: "無題".to_string(),
+        content_preview: String::new(),
+        content_length: 0,
         order_key: new_order,
         is_open: false,
         is_pinned: false,
@@ -142,7 +153,7 @@ pub fn create_child(state: State<'_, AppState>, parent_id: Option<String>) -> Re
     tx.execute(
         "INSERT INTO notes (parent_id, title, content, order_key, is_open, is_deleted, created_at, updated_at) 
          VALUES (?, ?, ?, ?, 0, 0, ?, ?)",
-        params![parent_id_int, "New Child", "", new_order, now, now]
+        params![parent_id_int, "無題", "", new_order, now, now]
     ).map_err(|e| e.to_string())?;
 
     let new_id = tx.last_insert_rowid();
@@ -151,8 +162,9 @@ pub fn create_child(state: State<'_, AppState>, parent_id: Option<String>) -> Re
     Ok(TreeNode {
         id: new_id.to_string(),
         parent_id: parent_id,
-        title: "New Child".to_string(),
-        content: "".to_string(),
+        title: "無題".to_string(),
+        content_preview: String::new(),
+        content_length: 0,
         order_key: new_order,
         is_open: false,
         is_pinned: false,
@@ -248,4 +260,83 @@ pub fn toggle_markdown_view(state: State<'_, AppState>, id: String) -> Result<bo
     ).map_err(|e| e.to_string())?;
 
     Ok(new_state == 1)
+}
+
+fn is_placeholder_title(title: &str) -> bool {
+    let t = title.trim();
+    t.is_empty() || t == "無題" || t == "New Note" || t == "New Child" || t.starts_with("メモ ")
+}
+
+fn title_from_content(content: &str) -> Option<String> {
+    let first_line = content.lines().find(|l| !l.trim().is_empty())?;
+    let cleaned = first_line
+        .trim()
+        .trim_start_matches('#')
+        .trim_start_matches('-')
+        .trim_start_matches('*')
+        .trim()
+        .to_string();
+    if cleaned.is_empty() {
+        return None;
+    }
+    Some(cleaned.chars().take(40).collect())
+}
+
+/// Quick capture: root-level note at top, timestamp title, ready to type
+#[tauri::command]
+pub fn create_quick_note(state: State<'_, AppState>) -> Result<crate::commands::tree::TreeNode, String> {
+    let mut conn = state.db.lock().map_err(|_| "Failed to lock database")?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let min_order: Option<f64> = tx
+        .query_row(
+            "SELECT MIN(order_key) FROM notes WHERE parent_id IS NULL AND is_deleted = 0",
+            [],
+            |row| row.get::<_, Option<f64>>(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let new_order = min_order.unwrap_or(1024.0) - 1024.0;
+    let title = format_timestamp_title(now);
+
+    tx.execute(
+        "INSERT INTO notes (parent_id, title, content, order_key, is_open, is_deleted, created_at, updated_at)
+         VALUES (NULL, ?, '', ?, 0, 0, ?, ?)",
+        params![title, new_order, now, now],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let new_id = tx.last_insert_rowid();
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(crate::commands::tree::TreeNode {
+        id: new_id.to_string(),
+        parent_id: None,
+        title: title.clone(),
+        content_preview: String::new(),
+        content_length: 0,
+        order_key: new_order,
+        is_open: false,
+        is_pinned: false,
+        is_markdown_view: false,
+        created_at: now,
+        updated_at: now,
+        has_children: false,
+    })
+}
+
+fn format_timestamp_title(now_ms: i64) -> String {
+    let secs = now_ms / 1000;
+    let time_of_day = secs % 86400;
+    let hour = time_of_day / 3600;
+    let min = (time_of_day % 3600) / 60;
+    let days = secs / 86400;
+    let month = ((days % 365) / 30 + 1).min(12);
+    let day = (days % 30) + 1;
+    format!("{:02}/{:02} {:02}:{:02}", month, day, hour, min)
 }

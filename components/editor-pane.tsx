@@ -6,6 +6,9 @@ import { cn } from '@/lib/utils';
 import { FileText } from 'lucide-react';
 import { StatusIndicator } from './status-indicator';
 import { MarkdownToggle } from './markdown-toggle';
+import { BacklinksPanel } from './backlinks-panel';
+import { wikiLinkPlugin, wikiLinkAutocomplete, checkboxClickHandler, toggleCheckboxLine } from '@/lib/codemirror-extensions';
+import { openSearchPanel } from '@codemirror/search';
 
 // CodeMirror imports
 import {
@@ -37,12 +40,14 @@ interface EditorPaneProps {
 }
 
 export function EditorPane({ paneId }: EditorPaneProps) {
-	const { treeNodes, activeNodeIds, focusedPane, updateNoteContent, setFocusedPane, setSaveStatus, openNote, isSyncScrollEnabled, syncScrollRatio, syncScrollSource, setSyncScrollRatio } =
+	const { treeNodes, activeNodeIds, focusedPane, noteContents, loadingNoteIds, updateNoteContent, setFocusedPane, setSaveStatus, openNote, resolveWikiLink, isSyncScrollEnabled, syncScrollRatio, syncScrollSource, setSyncScrollRatio } =
 		useNoteStore();
 
 	const activeNodeId = activeNodeIds[paneId];
 	const activeNode = treeNodes.find((n) => n.id === activeNodeId);
 	const isFocused = focusedPane === paneId;
+	const content = activeNodeId ? (noteContents[activeNodeId] ?? '') : '';
+	const isLoading = activeNodeId ? loadingNoteIds.has(activeNodeId) && noteContents[activeNodeId] === undefined : false;
 
 	const getBreadcrumb = (nodeId: string): { id: string; title: string }[] => {
 		const path: { id: string; title: string }[] = [];
@@ -92,19 +97,28 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 				</div>
 			</div>
 
+			<BacklinksPanel paneId={paneId} />
+
 			<div className="flex-1 relative overflow-hidden">
-				{activeNode ? (
+				{isLoading ? (
+					<div className="h-full flex items-center justify-center text-muted-foreground text-sm">読み込み中...</div>
+				) : activeNode ? (
 					<CodeMirrorEditor
 						key={activeNode.id}
 						activeNodeId={activeNode.id}
 						paneId={paneId}
-						content={activeNode.content}
+						content={content}
 						isMarkdownView={activeNode.isMarkdownView}
 						isSyncScrollEnabled={isSyncScrollEnabled}
 						syncScrollRatio={syncScrollRatio}
 						syncScrollSource={syncScrollSource}
 						onScrollSync={setSyncScrollRatio}
-						onSave={(content) => {
+						onWikiNavigate={async (title) => {
+							const id = await resolveWikiLink(title);
+							if (id) openNote(id, paneId);
+						}}
+						getNoteTitles={() => treeNodes.map((n) => n.title)}
+						onSave={(c) => {
 							setSaveStatus('saving');
 							updateNoteContent(activeNode.id, content).then(() => {
 								setSaveStatus('saved');
@@ -141,6 +155,8 @@ function CodeMirrorEditor({
 	syncScrollRatio,
 	syncScrollSource,
 	onScrollSync,
+	onWikiNavigate,
+	getNoteTitles,
 }: {
 	content: string;
 	onSave: (c: string) => void;
@@ -153,6 +169,8 @@ function CodeMirrorEditor({
 	syncScrollRatio: number;
 	syncScrollSource: 1 | 2 | null;
 	onScrollSync: (ratio: number, source: 1 | 2) => void;
+	onWikiNavigate: (title: string) => void;
+	getNoteTitles: () => string[];
 }) {
 	const { focusTarget } = useNoteStore();
 	const consumedTriggerRef = useRef(focusTarget.trigger);
@@ -198,6 +216,23 @@ function CodeMirrorEditor({
 							// Style the heading text
 							const headingClass = `cm-heading-${level}`;
 							builder.add(markerEnd, line.to, Decoration.mark({ class: headingClass }));
+							continue;
+						}
+
+						// Checkbox: - [ ] or - [x]
+						const cbMatch = text.match(/^(\s*)- \[([ xX])\] /);
+						if (cbMatch) {
+							const checked = cbMatch[2].toLowerCase() === 'x';
+							const indentLength = cbMatch[1].length;
+							const markerStart = line.from + indentLength;
+							const markerEnd = line.from + cbMatch[0].length;
+							builder.add(
+								markerStart,
+								markerEnd,
+								Decoration.replace({
+									widget: new CheckboxWidget(checked),
+								})
+							);
 							continue;
 						}
 
@@ -398,12 +433,31 @@ function CodeMirrorEditor({
 			scrollPastEnd(),
 			markdown(),
 			themeConfig,
-			search(),
-			keymap.of([...historyKeymap, ...searchKeymap, ...completionKeymap, indentWithTab]),
+			search({ top: true }),
+			wikiLinkPlugin(onWikiNavigate),
+			wikiLinkAutocomplete(getNoteTitles),
+			checkboxClickHandler((lineNum, checked) => {
+				const view = viewRef.current;
+				if (!view) return;
+				const newDoc = toggleCheckboxLine(view.state.doc.toString(), lineNum, checked);
+				view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: newDoc } });
+				setIsDirty(true);
+			}),
+			keymap.of([
+				...historyKeymap,
+				...searchKeymap,
+				...completionKeymap,
+				indentWithTab,
+				{
+					key: 'Mod-f',
+					run: (view) => {
+						openSearchPanel(view);
+						return true;
+					},
+				},
+			]),
 			EditorView.updateListener.of((update) => {
-				if (update.docChanged) {
-					setIsDirty(true);
-				}
+				if (update.docChanged) setIsDirty(true);
 			}),
 		];
 
@@ -437,7 +491,7 @@ function CodeMirrorEditor({
 			view.scrollDOM.removeEventListener('scroll', handleScroll);
 			view.destroy();
 		};
-	}, [isMarkdownView, isSyncScrollEnabled, onScrollSync, paneId]); // Re-create editor when markdown view changes
+	}, [isMarkdownView, isSyncScrollEnabled, onScrollSync, paneId, onWikiNavigate, getNoteTitles]);
 
 	// Apply synced scroll from the other pane
 	useEffect(() => {
@@ -506,6 +560,19 @@ class NumberWidget extends WidgetType {
 		const span = document.createElement('span');
 		span.className = 'cm-number-marker';
 		span.textContent = `${this.num}. `;
+		return span;
+	}
+}
+
+class CheckboxWidget extends WidgetType {
+	constructor(private checked: boolean) {
+		super();
+	}
+	toDOM() {
+		const span = document.createElement('span');
+		span.className = 'cm-checkbox-marker';
+		span.textContent = this.checked ? '☑ ' : '☐ ';
+		span.style.cssText = 'cursor:pointer;user-select:none';
 		return span;
 	}
 }

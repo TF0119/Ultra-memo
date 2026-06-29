@@ -5,3 +5,5 @@ pub mod move_note;
 pub mod open;
 pub mod trash;
 pub mod export;
+pub mod links;
+pub mod batch;

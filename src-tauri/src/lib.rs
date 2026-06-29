@@ -48,6 +48,11 @@ pub fn run() {
       commands::trash::hard_delete_note,
       commands::tree::get_path,
       commands::export::export_markdown_tree,
+      commands::notes::create_quick_note,
+      commands::links::resolve_wiki_link,
+      commands::links::get_backlinks,
+      commands::batch::batch_soft_delete,
+      commands::batch::batch_toggle_pin,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
