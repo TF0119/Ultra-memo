@@ -10,6 +10,7 @@ import { BacklinksPanel } from './backlinks-panel';
 import { wikiLinkPlugin, wikiLinkAutocomplete, checkboxClickHandler, toggleCheckboxLine } from '@/lib/codemirror-extensions';
 import { imeCompositionGuard } from '@/lib/editor-composition';
 import { markdownContinueKeymap } from '@/lib/editor-markdown-keys';
+import { editorPlaceholder } from '@/lib/editor-placeholder';
 import { openSearchPanel } from '@codemirror/search';
 
 // CodeMirror imports
@@ -42,7 +43,7 @@ interface EditorPaneProps {
 }
 
 export function EditorPane({ paneId }: EditorPaneProps) {
-	const { treeNodes, activeNodeIds, focusedPane, noteContents, loadingNoteIds, updateNoteContent, patchLocalContent, setFocusedPane, setSaveStatus, openNote, openWikiLink, isSyncScrollEnabled, syncScrollRatio, syncScrollSource, setSyncScrollRatio } =
+	const { treeNodes, activeNodeIds, focusedPane, noteContents, loadingNoteIds, updateNoteContent, patchLocalContent, setFocusedPane, setSaveStatus, openNote, openWikiLink, isSyncScrollEnabled, syncScrollRatio, syncScrollSource, setSyncScrollRatio, isZenMode } =
 		useNoteStore();
 
 	const activeNodeId = activeNodeIds[paneId];
@@ -120,6 +121,7 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 						onScrollSync={setSyncScrollRatio}
 						onWikiNavigate={(title) => openWikiLink(title, paneId)}
 						getNoteTitles={() => treeNodes.map((n) => n.title)}
+						isZenMode={isZenMode}
 						onSave={(c) => {
 							setSaveStatus('saving');
 							updateNoteContent(activeNode.id, content).then(() => {
@@ -159,6 +161,7 @@ function CodeMirrorEditor({
 	onScrollSync,
 	onWikiNavigate,
 	getNoteTitles,
+	isZenMode,
 }: {
 	content: string;
 	onSave: (c: string) => void;
@@ -173,6 +176,7 @@ function CodeMirrorEditor({
 	onScrollSync: (ratio: number, source: 1 | 2) => void;
 	onWikiNavigate: (title: string) => void;
 	getNoteTitles: () => string[];
+	isZenMode: boolean;
 }) {
 	const { focusTarget } = useNoteStore();
 	const consumedTriggerRef = useRef(focusTarget.trigger);
@@ -437,6 +441,7 @@ function CodeMirrorEditor({
 			themeConfig,
 			search({ top: true }),
 			markdownContinueKeymap(),
+			editorPlaceholder(),
 			wikiLinkPlugin(onWikiNavigate, (t) => getNoteTitles().some((n) => n.toLowerCase() === t.toLowerCase())),
 			wikiLinkAutocomplete(getNoteTitles),
 			checkboxClickHandler((lineNum, checked) => {
@@ -512,15 +517,27 @@ function CodeMirrorEditor({
 		});
 	}, [syncScrollRatio, syncScrollSource, isSyncScrollEnabled, paneId]);
 
-	// Focus effect reactive to explicit request
+	// Focus effect: place cursor at end and focus editor
 	useEffect(() => {
 		if (isFocused && viewRef.current && focusTarget.nodeId === activeNodeId && focusTarget.paneId === paneId) {
 			if (focusTarget.trigger > consumedTriggerRef.current) {
-				viewRef.current.focus();
+				const view = viewRef.current;
+				const end = view.state.doc.length;
+				view.dispatch({ selection: { anchor: end, head: end } });
+				view.focus();
 				consumedTriggerRef.current = focusTarget.trigger;
 			}
 		}
 	}, [isFocused, focusTarget, activeNodeId, paneId]);
+
+	// On mount with empty new note, cursor at end
+	useEffect(() => {
+		if (viewRef.current && content === '') {
+			const view = viewRef.current;
+			const end = view.state.doc.length;
+			view.dispatch({ selection: { anchor: end, head: end } });
+		}
+	}, [activeNodeId]);
 
 	// Save effect
 	useEffect(() => {
