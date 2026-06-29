@@ -13,16 +13,31 @@ export function markdownContinueKeymap() {
 				const line = state.doc.lineAt(state.selection.main.head);
 				const text = line.text;
 
+				// Heading: # title
+				const headingMatch = /^(\s*)(#{1,6})\s+(.*)$/.exec(text);
+				if (headingMatch) {
+					const indent = headingMatch[1];
+					const hashes = headingMatch[2];
+					const content = headingMatch[3];
+					if (content.trim() === '') {
+						view.dispatch({
+							changes: { from: line.from, to: line.to, insert: indent },
+							selection: { anchor: line.from + indent.length },
+						});
+						return true;
+					}
+					return insertWithPrefix(view, `${indent}${hashes} `);
+				}
+
 				// Checkbox: - [ ] or - [x]
 				const cbMatch = /^(\s*)- \[[ xX]\] (.*)$/.exec(text);
 				if (cbMatch) {
 					const indent = cbMatch[1];
 					const content = cbMatch[2];
-					if (content.trim() === '' && indent === '') {
-						// Empty checkbox line → exit list
+					if (content.trim() === '') {
 						view.dispatch({
-							changes: { from: line.from, to: line.to, insert: '' },
-							selection: { anchor: line.from },
+							changes: { from: line.from, to: line.to, insert: indent },
+							selection: { anchor: line.from + indent.length },
 						});
 						return true;
 					}
