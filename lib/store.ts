@@ -51,6 +51,7 @@ interface NoteStore {
 	backlinks: BacklinkNote[];
 	contentSaveSeq: Record<string, number>;
 	editorFlushByPane: { 1: (() => void) | null; 2: (() => void) | null };
+	failedNoteIds: Set<string>;
 
 	initialize: () => Promise<void>;
 	refreshTree: () => Promise<void>;
@@ -58,6 +59,7 @@ interface NoteStore {
 	clearSelection: () => void;
 	setEditingNodeId: (id: string | null) => void;
 	loadNoteContent: (id: string) => Promise<string>;
+	retryLoadNote: (id: string) => Promise<string>;
 	openNote: (id: string, paneId: 1 | 2, shouldFocusEditor?: boolean, skipHistory?: boolean) => Promise<void>;
 	updateNoteContent: (id: string, content: string) => Promise<void>;
 	createSibling: (selectedId: string) => Promise<void>;
@@ -139,6 +141,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	backlinks: [],
 	contentSaveSeq: {},
 	editorFlushByPane: { 1: null, 2: null },
+	failedNoteIds: new Set(),
 
 	initialize: async () => {
 		try {
@@ -199,34 +202,54 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 
 	loadNoteContent: async (id) => {
 		const cached = get().noteContents[id];
-		if (cached !== undefined) return cached;
-		set((s) => ({ loadingNoteIds: new Set(s.loadingNoteIds).add(id) }));
+		if (cached !== undefined && !get().failedNoteIds.has(id)) return cached;
+		set((s) => {
+			const failed = new Set(s.failedNoteIds);
+			failed.delete(id);
+			return { loadingNoteIds: new Set(s.loadingNoteIds).add(id), failedNoteIds: failed };
+		});
 		try {
 			const note = await invoke<{ id: string; title: string; content: string; updated_at: number }>('get_note', { id });
 			set((s) => {
 				const loading = new Set(s.loadingNoteIds);
 				loading.delete(id);
+				const failed = new Set(s.failedNoteIds);
+				failed.delete(id);
 				const treeNodes = s.treeNodes.map((n) =>
 					n.id === id ? { ...n, title: note.title, contentPreview: note.content.slice(0, 80), contentLength: note.content.length, updatedAt: note.updated_at } : n
 				);
 				return {
 					noteContents: { ...s.noteContents, [id]: note.content },
 					loadingNoteIds: loading,
+					failedNoteIds: failed,
 					treeNodes,
 				};
 			});
 			return note.content;
 		} catch (e) {
+			console.error('Failed to load note:', e);
 			set((s) => {
 				const loading = new Set(s.loadingNoteIds);
 				loading.delete(id);
-				return { loadingNoteIds: loading };
+				return { loadingNoteIds: loading, failedNoteIds: new Set(s.failedNoteIds).add(id) };
 			});
-			return '';
+			throw e;
 		}
 	},
 
+	retryLoadNote: async (id) => {
+		set((s) => {
+			const noteContents = { ...s.noteContents };
+			delete noteContents[id];
+			const failed = new Set(s.failedNoteIds);
+			failed.delete(id);
+			return { noteContents, failedNoteIds: failed };
+		});
+		return get().loadNoteContent(id);
+	},
+
 	openNote: async (id, paneId, shouldFocusEditor = true, skipHistory = false) => {
+		get().flushEditorSave();
 		try {
 			const [content] = await Promise.all([
 				get().loadNoteContent(id),
@@ -290,6 +313,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 					}
 				}
 				return {
+					saveStatus: 'saved',
 					noteContents: { ...state.noteContents, [id]: content },
 					contentSaveSeq: { ...state.contentSaveSeq, [id]: (state.contentSaveSeq[id] ?? 0) + 1 },
 					treeNodes: state.treeNodes.map((n) =>
@@ -301,6 +325,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 		} catch (error) {
 			console.error('Failed to update note content:', error);
 			set({ saveStatus: 'error' });
+			throw error;
 		}
 	},
 
@@ -390,7 +415,11 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 			set((s) => {
 				const next = new Set(s.selectedNodeIds);
 				next.delete(id);
-				return { selectedNodeIds: next, selectedNodeId: next.size ? [...next][0] : null };
+				return {
+					...purgeNotesFromState(s, [id]),
+					selectedNodeIds: next,
+					selectedNodeId: next.size ? [...next][0] : null,
+				};
 			});
 		} catch (error) {
 			console.error('Failed to delete note:', error);
@@ -404,7 +433,11 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 		try {
 			await invoke('batch_soft_delete', { ids });
 			await get().refreshTree();
-			set({ selectedNodeIds: new Set(), selectedNodeId: null });
+			set((s) => ({
+				...purgeNotesFromState(s, ids),
+				selectedNodeIds: new Set(),
+				selectedNodeId: null,
+			}));
 		} catch (error) {
 			console.error('Failed to batch delete:', error);
 		}
@@ -628,6 +661,25 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 		editorFlushByPane[2]?.();
 	},
 }));
+
+function purgeNotesFromState(state: NoteStore, ids: string[]) {
+	const idSet = new Set(ids);
+	const noteContents = { ...state.noteContents };
+	const contentSaveSeq = { ...state.contentSaveSeq };
+	const failedNoteIds = new Set(state.failedNoteIds);
+	for (const id of ids) {
+		delete noteContents[id];
+		delete contentSaveSeq[id];
+		failedNoteIds.delete(id);
+	}
+	const activeNodeIds = { ...state.activeNodeIds };
+	for (const pane of [1, 2] as const) {
+		if (activeNodeIds[pane] && idSet.has(activeNodeIds[pane]!)) {
+			activeNodeIds[pane] = null;
+		}
+	}
+	return { noteContents, contentSaveSeq, failedNoteIds, activeNodeIds };
+}
 
 function flattenVisible(nodes: TreeNode[], expanded: Set<string>, sortMode: 'manual' | 'recent'): string[] {
 	const result: string[] = [];
