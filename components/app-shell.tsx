@@ -120,12 +120,12 @@ export function AppShell() {
 				goForward();
 			}
 
-			if (e.key === 'Enter' && !e.ctrlKey && selectedNodeId && !inEditor && !inInput && !isQuickSwitcherOpen && !isCommandPaletteOpen) {
+			if (e.key === 'Enter' && !e.repeat && !e.ctrlKey && selectedNodeId && !inEditor && !inInput && !isQuickSwitcherOpen && !isCommandPaletteOpen) {
 				e.preventDefault();
 				openNote(selectedNodeId, focusedPane);
 			}
 
-			if (e.ctrlKey && e.key === 'Enter' && selectedNodeId && !inEditor && !inInput && !isQuickSwitcherOpen && !isCommandPaletteOpen) {
+			if (e.ctrlKey && e.key === 'Enter' && !e.repeat && selectedNodeId && !inEditor && !inInput && !isQuickSwitcherOpen && !isCommandPaletteOpen) {
 				e.preventDefault();
 				const targetPane = splitMode === 'split' ? ((focusedPane === 1 ? 2 : 1) as 1 | 2) : focusedPane;
 				openNote(selectedNodeId, targetPane);

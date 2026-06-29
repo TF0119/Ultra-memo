@@ -168,7 +168,7 @@ export function TreeSidebar() {
 			}
 			if (!selectedNodeId || editingNodeId) return;
 			const selectedNode = treeNodes.find((n) => n.id === selectedNodeId);
-			if (e.key === 'Enter') {
+			if (e.key === 'Enter' && !e.repeat) {
 				e.preventDefault();
 				const targetPane = e.ctrlKey ? ((focusedPane === 1 ? 2 : 1) as 1 | 2) : focusedPane;
 				openNote(selectedNodeId, targetPane);
