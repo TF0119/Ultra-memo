@@ -125,9 +125,9 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 						isZenMode={isZenMode}
 						onSave={(c) => {
 							setSaveStatus('saving');
-							updateNoteContent(activeNode.id, content).then(() => {
-								setSaveStatus('saved');
-							});
+							return updateNoteContent(activeNode.id, c)
+								.then(() => setSaveStatus('saved'))
+								.catch(() => setSaveStatus('error'));
 						}}
 						onFocus={() => setFocusedPane(paneId)}
 						isFocused={isFocused}
@@ -169,7 +169,7 @@ function CodeMirrorEditor({
 	isZenMode,
 }: {
 	content: string;
-	onSave: (c: string) => void;
+	onSave: (c: string) => Promise<void> | void;
 	onFocus: () => void;
 	isFocused: boolean;
 	activeNodeId: string;
@@ -208,6 +208,11 @@ function CodeMirrorEditor({
 		onSaveRef.current = onSave;
 	}, [onSave]);
 
+	const markSaved = useCallback(() => {
+		isDirtyRef.current = false;
+		setIsDirty(false);
+	}, []);
+
 	const flushSave = useCallback(() => {
 		if (saveTimeoutRef.current) {
 			clearTimeout(saveTimeoutRef.current);
@@ -215,11 +220,14 @@ function CodeMirrorEditor({
 		}
 		if (isDirtyRef.current && viewRef.current) {
 			const contentToSave = viewRef.current.state.doc.toString();
-			onSaveRef.current(contentToSave);
-			isDirtyRef.current = false;
-			setIsDirty(false);
+			const result = onSaveRef.current(contentToSave);
+			if (result && typeof (result as Promise<void>).then === 'function') {
+				(result as Promise<void>).then(markSaved).catch(() => {});
+			} else {
+				markSaved();
+			}
 		}
-	}, []);
+	}, [markSaved]);
 
 	// WYSIWYG Markdown decorations plugin
 	const wysiwygPlugin = useMemo(() => {
@@ -591,15 +599,18 @@ function CodeMirrorEditor({
 			if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 			const contentToSave = viewRef.current.state.doc.toString();
 			saveTimeoutRef.current = setTimeout(() => {
-				onSaveRef.current(contentToSave);
-				isDirtyRef.current = false;
-				setIsDirty(false);
+				const result = onSaveRef.current(contentToSave);
+				if (result && typeof (result as Promise<void>).then === 'function') {
+					(result as Promise<void>).then(markSaved).catch(() => {});
+				} else {
+					markSaved();
+				}
 			}, 400);
 		}
 		return () => {
 			if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 		};
-	}, [isDirty]);
+	}, [isDirty, markSaved]);
 
 	// Flush on window blur / before close
 	useEffect(() => {
