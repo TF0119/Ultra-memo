@@ -1,5 +1,6 @@
 import { EditorView, keymap } from '@codemirror/view';
 import { Prec } from '@codemirror/state';
+import { copyLineDown, deleteLine } from '@codemirror/commands';
 
 function wrapSelection(view: EditorView, marker: string): boolean {
 	const { from, to } = view.state.selection.main;
@@ -46,6 +47,8 @@ export function markdownFormatKeymap() {
 		keymap.of([
 			{ key: 'Mod-b', run: (view) => wrapSelection(view, '**') },
 			{ key: 'Mod-i', run: (view) => wrapSelection(view, '*') },
+			{ key: 'Mod-Shift-d', run: copyLineDown },
+			{ key: 'Mod-Shift-k', run: deleteLine },
 			{ key: 'Tab', run: (view) => indentListLine(view, 2) },
 			{ key: 'Shift-Tab', run: (view) => indentListLine(view, -2) },
 		])
