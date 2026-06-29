@@ -25,10 +25,10 @@ export function SidebarHeader({ splitMode, setSplitMode }: SidebarHeaderProps) {
 			<div className="h-11 border-b border-border flex items-center justify-between px-3 gap-1 flex-shrink-0 bg-card/30">
 				<div className="flex items-center gap-1">
 					<div className="flex items-center gap-0.5">
-						<Button variant="ghost" size="sm" className="h-7 w-7 p-0 hover:bg-accent/80" disabled={!canGoBack} onClick={goBack} title="戻る">
+						<Button variant="ghost" size="sm" className="h-7 w-7 p-0 hover:bg-accent/80" disabled={!canGoBack} onClick={goBack} title="戻る (Alt+←)">
 							<ChevronLeft className="w-4 h-4 opacity-70" />
 						</Button>
-						<Button variant="ghost" size="sm" className="h-7 w-7 p-0 hover:bg-accent/80" disabled={!canGoForward} onClick={goForward} title="進む">
+						<Button variant="ghost" size="sm" className="h-7 w-7 p-0 hover:bg-accent/80" disabled={!canGoForward} onClick={goForward} title="進む (Alt+→)">
 							<ChevronRight className="w-4 h-4 opacity-70" />
 						</Button>
 					</div>
