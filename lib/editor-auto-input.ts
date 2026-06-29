@@ -7,9 +7,9 @@ export function markdownAutoBullet() {
 		const line = view.state.doc.lineAt(from);
 		const before = view.state.sliceDoc(line.from, from);
 
-		if (before === '-') {
+		if (before === '-' || before === '*') {
 			view.dispatch({
-				changes: { from: line.from, to: from + 1, insert: '- ' },
+				changes: { from: line.from, to: from + 1, insert: `${before} ` },
 				selection: { anchor: line.from + 2 },
 			});
 			return true;

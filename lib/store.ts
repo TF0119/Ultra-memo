@@ -492,6 +492,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 			set((state) => {
 				const newExpanded = new Set(state.expandedNodeIds);
 				newExpanded.add(parentId);
+				saveExpandedNodes(newExpanded);
 				return { expandedNodeIds: newExpanded };
 			});
 			await get().moveNote(noteId, parentId, undefined, undefined);
@@ -648,6 +649,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 			URL.revokeObjectURL(url);
 		} catch (error) {
 			console.error('Failed to export markdown:', error);
+			window.alert('エクスポートに失敗しました');
 		}
 	},
 

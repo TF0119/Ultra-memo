@@ -148,7 +148,10 @@ export function TreeItem({
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="start" alignOffset={-5} className="w-40">
 						<DropdownMenuItem onClick={(e) => { e.stopPropagation(); onRename(node.id); }}>
-							<Edit2 className="w-3.5 h-3.5 mr-2" />名前を変更
+							<Edit2 className="w-3.5 h-3.5 mr-2" />名前を変更 <span className="ml-auto text-[10px] opacity-40">F2</span>
+						</DropdownMenuItem>
+						<DropdownMenuItem onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(displayTitle || node.title); }}>
+							<Copy className="w-3.5 h-3.5 mr-2" />タイトルをコピー
 						</DropdownMenuItem>
 						<DropdownMenuItem onClick={(e) => { e.stopPropagation(); onTogglePin(node.id); }}>
 							<Pin className="w-3.5 h-3.5 mr-2" />{node.isPinned ? 'ピン解除' : 'ピン留め'}
