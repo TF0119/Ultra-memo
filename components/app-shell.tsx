@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { TreeSidebar } from './tree-sidebar';
 import { EditorWorkspace } from './editor-workspace';
 import { QuickSwitcher } from './quick-switcher';
@@ -8,11 +8,14 @@ import { CommandPalette } from './command-palette';
 import { SidebarHeader } from './sidebar-header';
 import { useNoteStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
+import { loadSidebarWidth, saveSidebarWidth, loadSplitMode, saveSplitMode } from '@/lib/preferences';
 
 export function AppShell() {
 	const [isQuickSwitcherOpen, setIsQuickSwitcherOpen] = useState(false);
-	const [sidebarWidth, setSidebarWidth] = useState(280);
-	const [splitMode, setSplitMode] = useState<'single' | 'split'>('single');
+	const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
+	const sidebarWidthRef = useRef(sidebarWidth);
+	sidebarWidthRef.current = sidebarWidth;
+	const [splitMode, setSplitModeState] = useState<'single' | 'split'>(loadSplitMode);
 	const {
 		isInitialized,
 		initialize,
@@ -32,6 +35,11 @@ export function AppShell() {
 		goForward,
 		setFocusedPane,
 	} = useNoteStore();
+
+	const setSplitMode = useCallback((mode: 'single' | 'split') => {
+		setSplitModeState(mode);
+		saveSplitMode(mode);
+	}, []);
 
 	useEffect(() => {
 		if (!isInitialized) initialize();
@@ -147,12 +155,16 @@ export function AppShell() {
 
 	const handleResize = useCallback((e: MouseEvent) => {
 		const newWidth = e.clientX;
-		if (newWidth >= 200 && newWidth <= 500) setSidebarWidth(newWidth);
+		if (newWidth >= 200 && newWidth <= 500) {
+			setSidebarWidth(newWidth);
+			sidebarWidthRef.current = newWidth;
+		}
 	}, []);
 
 	const handleMouseUp = useCallback(() => {
 		document.removeEventListener('mousemove', handleResize);
 		document.removeEventListener('mouseup', handleMouseUp);
+		saveSidebarWidth(sidebarWidthRef.current);
 	}, [handleResize]);
 
 	const handleMouseDown = () => {

@@ -2,6 +2,9 @@ const KEYS = {
 	sortMode: 'ultra-memo:sortMode',
 	followActive: 'ultra-memo:followActive',
 	syncScroll: 'ultra-memo:syncScroll',
+	sidebarWidth: 'ultra-memo:sidebarWidth',
+	splitPosition: 'ultra-memo:splitPosition',
+	splitMode: 'ultra-memo:splitMode',
 } as const;
 
 export type SortMode = 'manual' | 'recent';
@@ -32,6 +35,35 @@ export function loadSyncScroll(): boolean {
 
 export function saveSyncScroll(enabled: boolean) {
 	localStorage.setItem(KEYS.syncScroll, String(enabled));
+}
+
+export function loadSidebarWidth(): number {
+	if (typeof window === 'undefined') return 280;
+	const v = Number(localStorage.getItem(KEYS.sidebarWidth));
+	return Number.isFinite(v) && v >= 200 && v <= 500 ? v : 280;
+}
+
+export function saveSidebarWidth(width: number) {
+	localStorage.setItem(KEYS.sidebarWidth, String(Math.round(width)));
+}
+
+export function loadSplitPosition(): number {
+	if (typeof window === 'undefined') return 50;
+	const v = Number(localStorage.getItem(KEYS.splitPosition));
+	return Number.isFinite(v) && v >= 20 && v <= 80 ? v : 50;
+}
+
+export function saveSplitPosition(percent: number) {
+	localStorage.setItem(KEYS.splitPosition, String(Math.round(percent)));
+}
+
+export function loadSplitMode(): 'single' | 'split' {
+	if (typeof window === 'undefined') return 'single';
+	return localStorage.getItem(KEYS.splitMode) === 'split' ? 'split' : 'single';
+}
+
+export function saveSplitMode(mode: 'single' | 'split') {
+	localStorage.setItem(KEYS.splitMode, mode);
 }
 
 export function formatQuickCaptureTitle(): string {

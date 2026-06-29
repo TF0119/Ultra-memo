@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
 import { EditorPane } from "./editor-pane"
 import { useNoteStore } from "@/lib/store"
+import { loadSplitPosition, saveSplitPosition } from "@/lib/preferences"
 
 export function EditorWorkspace({
   splitMode,
@@ -11,7 +12,9 @@ export function EditorWorkspace({
   splitMode: "single" | "split"
   setSplitMode: (mode: "single" | "split") => void
 }) {
-  const [splitPosition, setSplitPosition] = useState(50) // percentage
+  const [splitPosition, setSplitPosition] = useState(loadSplitPosition)
+  const splitPositionRef = useRef(splitPosition)
+  splitPositionRef.current = splitPosition
   const { activeNodeIds, focusedPane } = useNoteStore()
 
   const handleResize = useCallback((e: MouseEvent) => {
@@ -22,12 +25,14 @@ export function EditorWorkspace({
     const percentage = ((e.clientX - rect.left) / rect.width) * 100
     if (percentage >= 20 && percentage <= 80) {
       setSplitPosition(percentage)
+      splitPositionRef.current = percentage
     }
   }, [])
 
   const handleMouseUp = useCallback(() => {
     document.removeEventListener("mousemove", handleResize)
     document.removeEventListener("mouseup", handleMouseUp)
+    saveSplitPosition(splitPositionRef.current)
   }, [handleResize])
 
   const handleMouseDown = () => {
