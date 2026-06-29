@@ -85,7 +85,7 @@ export function QuickSwitcher({ isOpen, onClose }: QuickSwitcherProps) {
 			} else if (e.key === 'Enter') {
 				e.preventDefault();
 				if (displayResults[selectedIndex]) {
-					const targetPane = e.ctrlKey ? (focusedPane === 1 ? 2 : 1) : focusedPane;
+					const targetPane = e.ctrlKey || e.metaKey ? (focusedPane === 1 ? 2 : 1) : focusedPane;
 					openNote(displayResults[selectedIndex].id, targetPane);
 					onClose();
 				}
