@@ -33,7 +33,10 @@ export function BacklinksPanel({ paneId }: BacklinksPanelProps) {
 						<button
 							key={bl.id}
 							type="button"
-							onClick={() => openNote(bl.id, paneId, false)}
+							onClick={(e) => {
+								const targetPane = e.ctrlKey || e.metaKey ? ((paneId === 1 ? 2 : 1) as 1 | 2) : paneId;
+								openNote(bl.id, targetPane, false);
+							}}
 							className={cn(
 								'text-[11px] px-2 py-0.5 rounded-md border border-border/40 max-w-[200px] truncate',
 								'hover:bg-accent/60 hover:border-border transition-colors text-muted-foreground hover:text-foreground'
