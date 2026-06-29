@@ -35,7 +35,7 @@ class PlaceholderWidget {
 	toDOM() {
 		const span = document.createElement('span');
 		span.textContent = this.text;
-		span.style.cssText = 'color:#444;pointer-events:none;user-select:none;font-style:italic';
+		span.style.cssText = 'color:rgba(128,128,128,0.55);pointer-events:none;user-select:none;font-style:italic';
 		return span;
 	}
 	ignoreEvent() {
