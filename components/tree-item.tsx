@@ -66,10 +66,14 @@ export function TreeItem({
 			)}
 			onClick={(e) => {
 				onSelect(node.id);
-				onOpenNote(node.id);
 				(e.currentTarget as HTMLElement).focus();
 			}}
-			onDoubleClick={() => onTriggerEditorFocus()}
+			onDoubleClick={(e) => {
+				e.preventDefault();
+				onOpenNote(node.id);
+				onTriggerEditorFocus();
+			}}
+			tabIndex={isSelected ? 0 : -1}
 		>
 			{isActive && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-primary-foreground" />}
 
@@ -152,7 +156,7 @@ export function TreeItem({
 				</DropdownMenu>
 			</div>
 
-			{Node.length > 0 && (
+			{node.content.length > 0 && (
 				<span className={cn('text-[10px] tabular-nums font-medium opacity-0 group-hover:opacity-40 transition-opacity', isActive && 'group-hover:opacity-60')}>
 					{node.content.length}
 				</span>

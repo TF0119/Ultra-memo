@@ -37,20 +37,21 @@ interface EditorPaneProps {
 }
 
 export function EditorPane({ paneId }: EditorPaneProps) {
-	const { treeNodes, activeNodeIds, focusedPane, updateNoteContent, setFocusedPane, setSaveStatus } = useNoteStore();
+	const { treeNodes, activeNodeIds, focusedPane, updateNoteContent, setFocusedPane, setSaveStatus, openNote, isSyncScrollEnabled, syncScrollRatio, syncScrollSource, setSyncScrollRatio } =
+		useNoteStore();
 
 	const activeNodeId = activeNodeIds[paneId];
 	const activeNode = treeNodes.find((n) => n.id === activeNodeId);
 	const isFocused = focusedPane === paneId;
 
-	const getBreadcrumb = (nodeId: string): string[] => {
-		const path: string[] = [];
+	const getBreadcrumb = (nodeId: string): { id: string; title: string }[] => {
+		const path: { id: string; title: string }[] = [];
 		let currentId: string | null = nodeId;
 
 		while (currentId) {
 			const node = treeNodes.find((n) => n.id === currentId);
 			if (!node) break;
-			path.unshift(node.title);
+			path.unshift({ id: node.id, title: node.title });
 			currentId = node.parentId;
 		}
 
@@ -67,9 +68,21 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 			<div className="px-8 pt-5 pb-3 flex items-center justify-between text-[11px] flex-shrink-0 min-h-[44px]">
 				<div className="flex items-center gap-1.5 text-muted-foreground/40 font-medium tracking-tight h-4">
 					{breadcrumb.map((item, index) => (
-						<span key={index} className="flex items-center gap-1.5">
+						<span key={item.id} className="flex items-center gap-1.5">
 							{index > 0 && <span className="opacity-30">/</span>}
-							<span className={index === breadcrumb.length - 1 ? 'text-muted-foreground/70' : 'opacity-40'}>{item}</span>
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									openNote(item.id, paneId, false);
+								}}
+								className={cn(
+									'hover:text-foreground transition-colors',
+									index === breadcrumb.length - 1 ? 'text-muted-foreground/70' : 'opacity-40 hover:opacity-70'
+								)}
+							>
+								{item.title}
+							</button>
 						</span>
 					))}
 				</div>
@@ -87,6 +100,10 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 						paneId={paneId}
 						content={activeNode.content}
 						isMarkdownView={activeNode.isMarkdownView}
+						isSyncScrollEnabled={isSyncScrollEnabled}
+						syncScrollRatio={syncScrollRatio}
+						syncScrollSource={syncScrollSource}
+						onScrollSync={setSyncScrollRatio}
 						onSave={(content) => {
 							setSaveStatus('saving');
 							updateNoteContent(activeNode.id, content).then(() => {
@@ -120,6 +137,10 @@ function CodeMirrorEditor({
 	activeNodeId,
 	paneId,
 	isMarkdownView,
+	isSyncScrollEnabled,
+	syncScrollRatio,
+	syncScrollSource,
+	onScrollSync,
 }: {
 	content: string;
 	onSave: (c: string) => void;
@@ -128,6 +149,10 @@ function CodeMirrorEditor({
 	activeNodeId: string;
 	paneId: 1 | 2;
 	isMarkdownView: boolean;
+	isSyncScrollEnabled: boolean;
+	syncScrollRatio: number;
+	syncScrollSource: 1 | 2 | null;
+	onScrollSync: (ratio: number, source: 1 | 2) => void;
 }) {
 	const { focusTarget } = useNoteStore();
 	const consumedTriggerRef = useRef(focusTarget.trigger);
@@ -135,6 +160,7 @@ function CodeMirrorEditor({
 	const viewRef = useRef<EditorView | null>(null);
 	const [isDirty, setIsDirty] = useState(false);
 	const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+	const isSyncingRef = useRef(false);
 
 	// WYSIWYG Markdown decorations plugin
 	const wysiwygPlugin = useMemo(() => {
@@ -398,10 +424,35 @@ function CodeMirrorEditor({
 
 		viewRef.current = view;
 
+		const handleScroll = () => {
+			if (!isSyncScrollEnabled || isSyncingRef.current) return;
+			const scroller = view.scrollDOM;
+			const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+			if (maxScroll <= 0) return;
+			onScrollSync(scroller.scrollTop / maxScroll, paneId);
+		};
+		view.scrollDOM.addEventListener('scroll', handleScroll, { passive: true });
+
 		return () => {
+			view.scrollDOM.removeEventListener('scroll', handleScroll);
 			view.destroy();
 		};
-	}, [isMarkdownView]); // Re-create editor when markdown view changes
+	}, [isMarkdownView, isSyncScrollEnabled, onScrollSync, paneId]); // Re-create editor when markdown view changes
+
+	// Apply synced scroll from the other pane
+	useEffect(() => {
+		if (!isSyncScrollEnabled || syncScrollSource === paneId || syncScrollSource === null) return;
+		const view = viewRef.current;
+		if (!view) return;
+		const scroller = view.scrollDOM;
+		const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+		if (maxScroll <= 0) return;
+		isSyncingRef.current = true;
+		scroller.scrollTop = syncScrollRatio * maxScroll;
+		requestAnimationFrame(() => {
+			isSyncingRef.current = false;
+		});
+	}, [syncScrollRatio, syncScrollSource, isSyncScrollEnabled, paneId]);
 
 	// Focus effect reactive to explicit request
 	useEffect(() => {

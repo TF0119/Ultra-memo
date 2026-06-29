@@ -25,6 +25,10 @@ export function AppShell() {
 	// Keyboard shortcuts
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
+			const target = e.target as HTMLElement;
+			const inEditor = target?.closest('.cm-editor');
+			const inInput = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA';
+
 			// Ctrl+P: Quick Switcher
 			if (e.ctrlKey && e.key === 'p') {
 				e.preventDefault();
@@ -44,7 +48,7 @@ export function AppShell() {
 			// Ctrl+Shift+N: Create child note (or root if nothing selected)
 			if (e.ctrlKey && e.shiftKey && e.key === 'N') {
 				e.preventDefault();
-				createChild(selectedNodeId); // if null, it creates root
+				createChild(selectedNodeId);
 			}
 
 			// Ctrl+1: Focus pane 1
@@ -58,11 +62,24 @@ export function AppShell() {
 				e.preventDefault();
 				useNoteStore.setState({ focusedPane: 2 });
 			}
+
+			// Enter: Open selected note in focused pane (when not in editor/input)
+			if (e.key === 'Enter' && !e.ctrlKey && selectedNodeId && !inEditor && !inInput && !isQuickSwitcherOpen) {
+				e.preventDefault();
+				openNote(selectedNodeId, focusedPane);
+			}
+
+			// Ctrl+Enter: Open in opposite pane (split mode) or focused pane
+			if (e.ctrlKey && e.key === 'Enter' && selectedNodeId && !inEditor && !inInput && !isQuickSwitcherOpen) {
+				e.preventDefault();
+				const targetPane = splitMode === 'split' ? ((focusedPane === 1 ? 2 : 1) as 1 | 2) : focusedPane;
+				openNote(selectedNodeId, targetPane);
+			}
 		};
 
 		window.addEventListener('keydown', handleKeyDown);
 		return () => window.removeEventListener('keydown', handleKeyDown);
-	}, [selectedNodeId, createSibling, createChild]);
+	}, [selectedNodeId, createSibling, createChild, focusedPane, openNote, splitMode, isQuickSwitcherOpen]);
 
 	const handleResize = useCallback((e: MouseEvent) => {
 		const newWidth = e.clientX;

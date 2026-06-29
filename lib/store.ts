@@ -23,6 +23,9 @@ interface NoteStore {
 	expandedNodeIds: Set<string>;
 	openNodeIds: Set<string>;
 	isFollowActiveEnabled: boolean;
+	isSyncScrollEnabled: boolean;
+	syncScrollRatio: number;
+	syncScrollSource: 1 | 2 | null;
 	isInitialized: boolean;
 	focusTarget: { nodeId: string | null; paneId: 1 | 2; trigger: number };
 
@@ -48,6 +51,11 @@ interface NoteStore {
 	togglePinNote: (id: string) => Promise<void>;
 	toggleMarkdownView: (id: string) => Promise<void>;
 	triggerEditorFocus: () => void;
+	toggleFollowActive: () => void;
+	toggleSyncScroll: () => void;
+	setSyncScrollRatio: (ratio: number, source: 1 | 2) => void;
+	exportMarkdownTree: () => Promise<void>;
+	getNodePath: (id: string) => Promise<string[]>;
 
 	// History Actions
 	goBack: () => void;
@@ -65,6 +73,9 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	expandedNodeIds: new Set(),
 	openNodeIds: new Set(),
 	isFollowActiveEnabled: true,
+	isSyncScrollEnabled: false,
+	syncScrollRatio: 0,
+	syncScrollSource: null,
 	isInitialized: false,
 	focusTarget: { nodeId: null, paneId: 1, trigger: 0 },
 
@@ -348,6 +359,50 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 				trigger: state.focusTarget.trigger + 1,
 			},
 		}));
+	},
+
+	toggleFollowActive: () => {
+		set((state) => ({ isFollowActiveEnabled: !state.isFollowActiveEnabled }));
+	},
+
+	toggleSyncScroll: () => {
+		set((state) => ({ isSyncScrollEnabled: !state.isSyncScrollEnabled }));
+	},
+
+	setSyncScrollRatio: (ratio, source) => {
+		set({ syncScrollRatio: ratio, syncScrollSource: source });
+	},
+
+	getNodePath: async (id) => {
+		try {
+			return await invoke<string[]>('get_path', { noteId: id });
+		} catch {
+			// Fallback: build path client-side
+			const state = get();
+			const path: string[] = [];
+			let currentId: string | null = id;
+			while (currentId) {
+				path.unshift(currentId);
+				const node = state.treeNodes.find((n) => n.id === currentId);
+				currentId = node?.parentId ?? null;
+			}
+			return path;
+		}
+	},
+
+	exportMarkdownTree: async () => {
+		try {
+			const markdown = await invoke<string>('export_markdown_tree');
+			const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `ultra-memo-export-${new Date().toISOString().slice(0, 10)}.md`;
+			a.click();
+			URL.revokeObjectURL(url);
+		} catch (error) {
+			console.error('Failed to export markdown:', error);
+		}
 	},
 
 	// History Actions

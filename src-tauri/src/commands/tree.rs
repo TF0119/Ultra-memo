@@ -55,3 +55,23 @@ pub fn get_tree_snapshot(state: State<'_, AppState>) -> Result<Vec<TreeNode>, St
 
     Ok(result)
 }
+
+#[tauri::command]
+pub fn get_path(state: State<'_, AppState>, note_id: String) -> Result<Vec<String>, String> {
+    let conn = state.db.lock().map_err(|_| "Failed to lock database")?;
+    let mut current_id: Option<i64> = Some(note_id.parse().map_err(|_| "Invalid note ID")?);
+    let mut path = Vec::new();
+
+    while let Some(id) = current_id {
+        path.insert(0, id.to_string());
+        current_id = conn
+            .query_row(
+                "SELECT parent_id FROM notes WHERE id = ?1 AND is_deleted = 0",
+                [id],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(path)
+}

@@ -46,6 +46,8 @@ pub fn run() {
       commands::trash::get_deleted_notes,
       commands::trash::restore_note,
       commands::trash::hard_delete_note,
+      commands::tree::get_path,
+      commands::export::export_markdown_tree,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

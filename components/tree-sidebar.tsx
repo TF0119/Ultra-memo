@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Plus, Search } from 'lucide-react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useNoteStore, type TreeNode } from '@/lib/store';
-import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TreeItem } from './tree-item';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay, defaultDropAnimationSideEffects, DropAnimation } from '@dnd-kit/core';
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { createPortal } from 'react-dom';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
+
+const ROW_HEIGHT = 32;
 
 export function TreeSidebar() {
 	const {
@@ -19,12 +20,12 @@ export function TreeSidebar() {
 		openNodeIds,
 		expandedNodeIds,
 		isFollowActiveEnabled,
+		focusedPane,
 		selectNode,
 		openNote,
 		toggleExpanded,
 		createSibling,
 		createChild,
-		focusedPane,
 		triggerEditorFocus,
 		renameNote,
 		deleteNote,
@@ -34,24 +35,23 @@ export function TreeSidebar() {
 
 	const [searchQuery, setSearchQuery] = useState('');
 	const [activeDragId, setActiveDragId] = useState<string | null>(null);
+	const [isManualScrolling, setIsManualScrolling] = useState(false);
+	const scrollContainerRef = useRef<HTMLDivElement>(null);
+	const manualScrollTimerRef = useRef<NodeJS.Timeout | null>(null);
 
 	const sensors = useSensors(
 		useSensor(PointerSensor, {
-			activationConstraint: {
-				distance: 8, // Drag starts after 8px movement
-			},
+			activationConstraint: { distance: 8 },
 		}),
 		useSensor(KeyboardSensor, {
 			coordinateGetter: sortableKeyboardCoordinates,
 		})
 	);
 
-	// Flatten the tree for display (handling expansion)
 	const displayedNodes = useMemo(() => {
 		const nodes: { node: TreeNode; depth: number }[] = [];
 
 		const traverse = (parentId: string | null, depth: number) => {
-			// Sort: pinned items first, then by orderKey
 			const children = treeNodes
 				.filter((n) => n.parentId === parentId)
 				.sort((a, b) => {
@@ -60,75 +60,105 @@ export function TreeSidebar() {
 				});
 
 			for (const child of children) {
-				// Handle Search Filter
-				const match = child.title.toLowerCase().includes(searchQuery.toLowerCase());
-				// If searching, show all matches regardless of expansion (and maybe their parents? simplify: just flatten matches)
-				// Actually, maintaining tree structure during search is hard.
-				// For now: if search query exists, show flat list of matches.
-				if (searchQuery) {
-					if (match) nodes.push({ node: child, depth: 0 }); // Flatten depth on search
-					// traverse children too for search
+				nodes.push({ node: child, depth });
+				if (expandedNodeIds.has(child.id)) {
 					traverse(child.id, depth + 1);
-				} else {
-					// Normal Tree View
-					nodes.push({ node: child, depth });
-					if (expandedNodeIds.has(child.id)) {
-						traverse(child.id, depth + 1);
-					}
 				}
 			}
 		};
 
-		// If search is active, we just want a flat list of matches, potentially.
-		// But let's try to keep the logic simple first.
 		if (searchQuery) {
-			return treeNodes.filter((n) => n.title.toLowerCase().includes(searchQuery.toLowerCase())).map((n) => ({ node: n, depth: 0 }));
+			return treeNodes
+				.filter((n) => n.title.toLowerCase().includes(searchQuery.toLowerCase()))
+				.map((n) => ({ node: n, depth: 0 }));
 		}
 
 		traverse(null, 0);
 		return nodes;
 	}, [treeNodes, expandedNodeIds, searchQuery]);
 
-	const activeDragNode = activeDragId ? treeNodes.find((n) => n.id === activeDragId) : null;
+	const rowVirtualizer = useVirtualizer({
+		count: displayedNodes.length,
+		getScrollElement: () => scrollContainerRef.current,
+		estimateSize: () => ROW_HEIGHT,
+		overscan: 15,
+	});
 
-	// DnD Handlers
-	const handleDragStart = (event: any) => {
-		setActiveDragId(event.active.id);
+	const activeDragNode = activeDragId ? treeNodes.find((n) => n.id === activeDragId) : null;
+	const activeNodeId = activeNodeIds[focusedPane];
+
+	// Follow Active: scroll tree to active node
+	useEffect(() => {
+		if (!isFollowActiveEnabled || isManualScrolling || !activeNodeId) return;
+		const index = displayedNodes.findIndex((n) => n.node.id === activeNodeId);
+		if (index !== -1) {
+			rowVirtualizer.scrollToIndex(index, { align: 'center' });
+		}
+	}, [activeNodeId, isFollowActiveEnabled, displayedNodes, isManualScrolling, rowVirtualizer]);
+
+	const handleManualScroll = useCallback(() => {
+		setIsManualScrolling(true);
+		if (manualScrollTimerRef.current) clearTimeout(manualScrollTimerRef.current);
+		manualScrollTimerRef.current = setTimeout(() => setIsManualScrolling(false), 2000);
+	}, []);
+
+	useEffect(() => {
+		return () => {
+			if (manualScrollTimerRef.current) clearTimeout(manualScrollTimerRef.current);
+		};
+	}, []);
+
+	const handleTreeKeyDown = useCallback(
+		(e: React.KeyboardEvent) => {
+			if (!selectedNodeId) return;
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				const targetPane = e.ctrlKey ? ((focusedPane === 1 ? 2 : 1) as 1 | 2) : focusedPane;
+				openNote(selectedNodeId, targetPane);
+				if (!e.ctrlKey) triggerEditorFocus();
+			} else if (e.key === 'ArrowDown') {
+				e.preventDefault();
+				const idx = displayedNodes.findIndex((n) => n.node.id === selectedNodeId);
+				if (idx < displayedNodes.length - 1) {
+					selectNode(displayedNodes[idx + 1].node.id);
+					rowVirtualizer.scrollToIndex(idx + 1, { align: 'auto' });
+				}
+			} else if (e.key === 'ArrowUp') {
+				e.preventDefault();
+				const idx = displayedNodes.findIndex((n) => n.node.id === selectedNodeId);
+				if (idx > 0) {
+					selectNode(displayedNodes[idx - 1].node.id);
+					rowVirtualizer.scrollToIndex(idx - 1, { align: 'auto' });
+				}
+			}
+		},
+		[selectedNodeId, focusedPane, displayedNodes, openNote, selectNode, triggerEditorFocus, rowVirtualizer]
+	);
+
+	const handleDragStart = (event: { active: { id: string | number } }) => {
+		setActiveDragId(String(event.active.id));
 	};
 
-	const handleDragEnd = async (event: any) => {
+	const handleDragEnd = async (event: { active: { id: string | number }; over: { id: string | number } | null }) => {
 		const { active, over } = event;
 		setActiveDragId(null);
-
 		if (!over || active.id === over.id) return;
 
-		const activeId = active.id as string;
-		const overId = over.id as string;
-
-		// Find indices in displayedNodes to detect drag direction
+		const activeId = String(active.id);
+		const overId = String(over.id);
 		const oldIndex = displayedNodes.findIndex((n) => n.node.id === activeId);
 		const newIndex = displayedNodes.findIndex((n) => n.node.id === overId);
-
 		if (oldIndex === -1 || newIndex === -1) return;
 
 		const overNode = treeNodes.find((n) => n.id === overId);
 		if (!overNode) return;
 
-		// Determine target based on drag direction
-		// Dragging DOWN: insert AFTER the target (so we need to find the NEXT sibling as target)
-		// Dragging UP: insert AT the target position (current behavior)
-
 		if (newIndex > oldIndex) {
-			// Dragging DOWN - we want to go AFTER overNode
-			// Find all siblings and get the one after overNode
 			const siblings = treeNodes.filter((n) => n.parentId === overNode.parentId).sort((a, b) => a.orderKey - b.orderKey);
 			const overIndexInSiblings = siblings.findIndex((n) => n.id === overId);
 			const nextSibling = siblings[overIndexInSiblings + 1];
-
-			// If there's a next sibling, insert at its position; otherwise append to end
 			moveNote(activeId, overNode.parentId, undefined, nextSibling?.id);
 		} else {
-			// Dragging UP - insert AT overNode's position
 			moveNote(activeId, overNode.parentId, undefined, overId);
 		}
 	};
@@ -160,41 +190,64 @@ export function TreeSidebar() {
 			</div>
 
 			<DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-				<div className="flex-1 overflow-y-auto py-2">
+				<div
+					ref={scrollContainerRef}
+					className="flex-1 overflow-y-auto py-2 outline-none"
+					tabIndex={0}
+					onKeyDown={handleTreeKeyDown}
+					onScroll={handleManualScroll}
+					onWheel={handleManualScroll}
+				>
 					<SortableContext items={displayedNodes.map((n) => n.node.id)} strategy={verticalListSortingStrategy}>
 						{displayedNodes.length === 0 ? (
 							<div className="px-4 py-12 text-center text-muted-foreground">
 								<p className="text-xs font-medium">ノートがありません</p>
 							</div>
 						) : (
-							displayedNodes.map(({ node, depth }) => (
-								<TreeItem
-									key={node.id}
-									node={node}
-									depth={depth}
-									isSelected={selectedNodeId === node.id}
-									isActive={activeNodeIds[focusedPane] === node.id}
-									isOpen={openNodeIds.has(node.id)}
-									isExpanded={expandedNodeIds.has(node.id)}
-									onSelect={selectNode}
-									onToggle={(id, e) => {
-										e.stopPropagation();
-										toggleExpanded(id);
-									}}
-									onOpenNote={(id) => openNote(id, focusedPane, false)}
-									onTriggerEditorFocus={triggerEditorFocus}
-									onRename={(id) => {
-										const newName = prompt('名前を変更', node.title);
-										if (newName && newName !== node.title) {
-											renameNote(id, newName);
-										}
-									}}
-									onDelete={(id) => {
-										if (confirm('削除しますか？')) deleteNote(id);
-									}}
-									onTogglePin={(id) => togglePinNote(id)}
-								/>
-							))
+							<div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
+								{rowVirtualizer.getVirtualItems().map((virtualRow) => {
+									const { node, depth } = displayedNodes[virtualRow.index];
+									const isActiveInAnyPane = activeNodeIds[1] === node.id || activeNodeIds[2] === node.id;
+									return (
+										<div
+											key={node.id}
+											data-tree-node-id={node.id}
+											style={{
+												position: 'absolute',
+												top: 0,
+												left: 0,
+												width: '100%',
+												height: `${virtualRow.size}px`,
+												transform: `translateY(${virtualRow.start}px)`,
+											}}
+										>
+											<TreeItem
+												node={node}
+												depth={depth}
+												isSelected={selectedNodeId === node.id}
+												isActive={isActiveInAnyPane}
+												isOpen={openNodeIds.has(node.id)}
+												isExpanded={expandedNodeIds.has(node.id)}
+												onSelect={selectNode}
+												onToggle={(id, e) => {
+													e.stopPropagation();
+													toggleExpanded(id);
+												}}
+												onOpenNote={(id) => openNote(id, focusedPane, false)}
+												onTriggerEditorFocus={triggerEditorFocus}
+												onRename={(id) => {
+													const newName = prompt('名前を変更', node.title);
+													if (newName && newName !== node.title) renameNote(id, newName);
+												}}
+												onDelete={(id) => {
+													if (confirm('削除しますか？')) deleteNote(id);
+												}}
+												onTogglePin={(id) => togglePinNote(id)}
+											/>
+										</div>
+									);
+								})}
+							</div>
 						)}
 					</SortableContext>
 				</div>
