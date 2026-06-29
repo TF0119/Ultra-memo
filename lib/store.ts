@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { isPlaceholderTitle } from './wiki-links';
-import { loadSortMode, saveSortMode, loadFollowActive, saveFollowActive, loadSyncScroll, saveSyncScroll, formatQuickCaptureTitle } from './preferences';
+import { loadSortMode, saveSortMode, loadFollowActive, saveFollowActive, loadSyncScroll, saveSyncScroll, formatQuickCaptureTitle, loadExpandedNodes, saveExpandedNodes } from './preferences';
 import { clearEditorSession } from './editor-session';
 
 export interface TreeNode {
@@ -125,7 +125,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	editingNodeId: null,
 	activeNodeIds: { 1: null, 2: null },
 	focusedPane: 1,
-	expandedNodeIds: new Set(),
+	expandedNodeIds: new Set(loadExpandedNodes()),
 	openNodeIds: new Set(),
 	isFollowActiveEnabled: loadFollowActive(),
 	isSyncScrollEnabled: loadSyncScroll(),
@@ -283,6 +283,8 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 					}
 				}
 
+				saveExpandedNodes(newExpanded);
+
 				return {
 					activeNodeIds: { ...state.activeNodeIds, [paneId]: id },
 					openNodeIds: new Set(openNodes),
@@ -381,6 +383,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 			set((state) => {
 				const newExpanded = new Set(state.expandedNodeIds);
 				if (parentId) newExpanded.add(parentId);
+				saveExpandedNodes(newExpanded);
 				return {
 					treeNodes: [...state.treeNodes, newNode],
 					selectedNodeId: newNode.id,
@@ -524,17 +527,23 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 			const newExpanded = new Set(state.expandedNodeIds);
 			if (newExpanded.has(id)) newExpanded.delete(id);
 			else newExpanded.add(id);
+			saveExpandedNodes(newExpanded);
 			return { expandedNodeIds: newExpanded };
 		});
 	},
 
 	expandAll: () => {
-		set((state) => ({
-			expandedNodeIds: new Set(state.treeNodes.filter((n) => n.hasChildren).map((n) => n.id)),
-		}));
+		set((state) => {
+			const newExpanded = new Set(state.treeNodes.filter((n) => n.hasChildren).map((n) => n.id));
+			saveExpandedNodes(newExpanded);
+			return { expandedNodeIds: newExpanded };
+		});
 	},
 
-	collapseAll: () => set({ expandedNodeIds: new Set() }),
+	collapseAll: () => {
+		saveExpandedNodes([]);
+		set({ expandedNodeIds: new Set() });
+	},
 
 	setFocusedPane: (paneId) => {
 		set((state) => ({

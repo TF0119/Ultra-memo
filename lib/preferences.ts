@@ -5,6 +5,7 @@ const KEYS = {
 	sidebarWidth: 'ultra-memo:sidebarWidth',
 	splitPosition: 'ultra-memo:splitPosition',
 	splitMode: 'ultra-memo:splitMode',
+	expandedNodes: 'ultra-memo:expandedNodes',
 } as const;
 
 export type SortMode = 'manual' | 'recent';
@@ -64,6 +65,22 @@ export function loadSplitMode(): 'single' | 'split' {
 
 export function saveSplitMode(mode: 'single' | 'split') {
 	localStorage.setItem(KEYS.splitMode, mode);
+}
+
+export function loadExpandedNodes(): string[] {
+	if (typeof window === 'undefined') return [];
+	try {
+		const raw = localStorage.getItem(KEYS.expandedNodes);
+		if (!raw) return [];
+		const parsed = JSON.parse(raw);
+		return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : [];
+	} catch {
+		return [];
+	}
+}
+
+export function saveExpandedNodes(ids: Iterable<string>) {
+	localStorage.setItem(KEYS.expandedNodes, JSON.stringify([...ids]));
 }
 
 export function formatQuickCaptureTitle(): string {
