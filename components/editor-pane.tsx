@@ -8,6 +8,7 @@ import { StatusIndicator } from './status-indicator';
 import { MarkdownToggle } from './markdown-toggle';
 import { BacklinksPanel } from './backlinks-panel';
 import { wikiLinkPlugin, wikiLinkAutocomplete, checkboxClickHandler, toggleCheckboxLine } from '@/lib/codemirror-extensions';
+import { imeCompositionGuard } from '@/lib/editor-composition';
 import { openSearchPanel } from '@codemirror/search';
 
 // CodeMirror imports
@@ -456,12 +457,9 @@ function CodeMirrorEditor({
 					},
 				},
 			]),
-			EditorView.updateListener.of((update) => {
-				if (update.docChanged) {
-					setIsDirty(true);
-					const doc = update.state.doc.toString();
-					useNoteStore.getState().patchLocalContent(activeNodeId, doc);
-				}
+			...imeCompositionGuard((doc) => {
+				setIsDirty(true);
+				useNoteStore.getState().patchLocalContent(activeNodeId, doc);
 			}),
 		];
 
