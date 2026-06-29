@@ -77,6 +77,7 @@ export function QuickSwitcher({ isOpen, onClose }: QuickSwitcherProps) {
 				onClose();
 			} else if (e.key === 'ArrowDown') {
 				e.preventDefault();
+				if (displayResults.length === 0) return;
 				setSelectedIndex((prev) => Math.min(prev + 1, displayResults.length - 1));
 			} else if (e.key === 'ArrowUp') {
 				e.preventDefault();
@@ -170,8 +171,9 @@ export function QuickSwitcher({ isOpen, onClose }: QuickSwitcherProps) {
 										'px-4 py-3 cursor-pointer border-b border-border/30 last:border-0 transition-all duration-100',
 										index === selectedIndex ? 'bg-accent/80 shadow-sm' : 'hover:bg-accent/40 active:bg-accent/60'
 									)}
-									onClick={() => {
-										openNote(node.id, focusedPane);
+									onClick={(e) => {
+										const targetPane = e.ctrlKey || e.metaKey ? ((focusedPane === 1 ? 2 : 1) as 1 | 2) : focusedPane;
+										openNote(node.id, targetPane);
 										onClose();
 									}}
 									onMouseEnter={() => setSelectedIndex(index)}
