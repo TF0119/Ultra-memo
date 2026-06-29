@@ -60,6 +60,21 @@ export function markdownContinueKeymap() {
 					return insertWithPrefix(view, `${indent}${num + 1}. `);
 				}
 
+				// Blockquote: > text
+				const bqMatch = /^(\s*)> (.*)$/.exec(text);
+				if (bqMatch) {
+					const indent = bqMatch[1];
+					const content = bqMatch[2];
+					if (content.trim() === '') {
+						view.dispatch({
+							changes: { from: line.from, to: line.to, insert: indent },
+							selection: { anchor: line.from + indent.length },
+						});
+						return true;
+					}
+					return insertWithPrefix(view, `${indent}> `);
+				}
+
 				return false;
 			},
 		},
