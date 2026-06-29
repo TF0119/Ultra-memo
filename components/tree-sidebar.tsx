@@ -39,6 +39,7 @@ export function TreeSidebar() {
 		nestNote,
 		togglePinNote,
 		setEditingNodeId,
+		clearSelection,
 	} = useNoteStore();
 
 	const [searchQuery, setSearchQuery] = useState('');
@@ -160,7 +161,13 @@ export function TreeSidebar() {
 
 	const handleTreeKeyDown = useCallback(
 		(e: React.KeyboardEvent) => {
-			if (!selectedNodeId) return;
+			if (e.key === 'Escape' && selectedNodeIds.size > 1) {
+				e.preventDefault();
+				clearSelection();
+				return;
+			}
+			if (!selectedNodeId || editingNodeId) return;
+			const selectedNode = treeNodes.find((n) => n.id === selectedNodeId);
 			if (e.key === 'Enter') {
 				e.preventDefault();
 				const targetPane = e.ctrlKey ? ((focusedPane === 1 ? 2 : 1) as 1 | 2) : focusedPane;
@@ -169,6 +176,21 @@ export function TreeSidebar() {
 			} else if (e.key === 'F2') {
 				e.preventDefault();
 				setEditingNodeId(selectedNodeId);
+			} else if (e.key === 'ArrowRight' && selectedNode?.hasChildren) {
+				e.preventDefault();
+				if (!expandedNodeIds.has(selectedNodeId)) toggleExpanded(selectedNodeId);
+			} else if (e.key === 'ArrowLeft') {
+				e.preventDefault();
+				if (selectedNode?.hasChildren && expandedNodeIds.has(selectedNodeId)) {
+					toggleExpanded(selectedNodeId);
+				} else if (selectedNode?.parentId) {
+					selectNode(selectedNode.parentId);
+					const idx = displayedNodes.findIndex((n) => n.node.id === selectedNode.parentId);
+					if (idx !== -1) rowVirtualizer.scrollToIndex(idx, { align: 'auto' });
+				}
+			} else if (e.key === 'Delete' || e.key === 'Backspace') {
+				e.preventDefault();
+				if (confirm('削除しますか？')) deleteNote(selectedNodeId);
 			} else if (e.key === 'ArrowDown') {
 				e.preventDefault();
 				const flat = displayedNodes.map((n) => n.node.id);
@@ -187,7 +209,23 @@ export function TreeSidebar() {
 				}
 			}
 		},
-		[selectedNodeId, focusedPane, displayedNodes, openNote, selectNode, triggerEditorFocus, rowVirtualizer, setEditingNodeId]
+		[
+			selectedNodeId,
+			selectedNodeIds,
+			editingNodeId,
+			treeNodes,
+			expandedNodeIds,
+			focusedPane,
+			displayedNodes,
+			openNote,
+			selectNode,
+			triggerEditorFocus,
+			rowVirtualizer,
+			setEditingNodeId,
+			toggleExpanded,
+			deleteNote,
+			clearSelection,
+		]
 	);
 
 	return (
@@ -240,10 +278,21 @@ export function TreeSidebar() {
 					<SortableContext items={displayedNodes.map((n) => n.node.id)} strategy={verticalListSortingStrategy}>
 						{displayedNodes.length === 0 ? (
 							<div className="px-4 py-12 text-center text-muted-foreground">
-								<p className="text-xs font-medium">ノートがありません</p>
-								<Button variant="link" size="sm" className="mt-2 text-xs" onClick={() => quickCapture()}>
-									一言メモを書く
-								</Button>
+								{searchQuery ? (
+									<>
+										<p className="text-xs font-medium">「{searchQuery}」に一致なし</p>
+										<Button variant="link" size="sm" className="mt-2 text-xs" onClick={() => setSearchQuery('')}>
+											検索をクリア
+										</Button>
+									</>
+								) : (
+									<>
+										<p className="text-xs font-medium">ノートがありません</p>
+										<Button variant="link" size="sm" className="mt-2 text-xs" onClick={() => quickCapture()}>
+											一言メモを書く
+										</Button>
+									</>
+								)}
 							</div>
 						) : (
 							<div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
