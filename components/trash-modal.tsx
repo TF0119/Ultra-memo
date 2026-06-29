@@ -21,7 +21,7 @@ interface TrashModalProps {
 export function TrashModal({ open, onOpenChange }: TrashModalProps) {
 	const [deletedNotes, setDeletedNotes] = useState<DeletedNote[]>([]);
 	const [loading, setLoading] = useState(false);
-	const { initialize } = useNoteStore();
+	const { refreshTree } = useNoteStore();
 
 	const loadDeletedNotes = async () => {
 		setLoading(true);
@@ -45,8 +45,7 @@ export function TrashModal({ open, onOpenChange }: TrashModalProps) {
 		try {
 			await invoke('restore_note', { id });
 			setDeletedNotes((prev) => prev.filter((n) => n.id !== id));
-			// Refresh the tree
-			await initialize();
+			await refreshTree();
 		} catch (error) {
 			console.error('Failed to restore note:', error);
 		}
