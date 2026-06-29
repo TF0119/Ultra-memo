@@ -14,7 +14,7 @@ class WikiLinkWidget extends WidgetType {
 		const span = document.createElement('span');
 		span.className = 'cm-wiki-link';
 		span.textContent = this.title;
-		span.title = this.exists ? `[[${this.title}]] へ移動` : `[[${this.title}]] を作成して開く`;
+		span.title = this.exists ? `[[${this.title}]] へ移動 · Mod+クリックで反対ペイン` : `[[${this.title}]] を作成して開く · Mod+クリックで反対ペイン`;
 		span.style.cssText = this.exists
 			? 'color:#7dd3fc;cursor:pointer;text-decoration:underline;text-underline-offset:2px'
 			: 'color:#fbbf24;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;opacity:0.85';
