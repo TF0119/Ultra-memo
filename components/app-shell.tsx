@@ -164,13 +164,15 @@ export function AppShell() {
 				<div className="flex-1 overflow-hidden relative">
 					<EditorWorkspace splitMode={isZenMode ? 'single' : splitMode} setSplitMode={setSplitMode} />
 					{isZenMode && (
-						<button
-							type="button"
-							onClick={() => toggleZenMode()}
-							className="absolute top-3 right-4 text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors z-10"
-						>
-							Zen終了 (F11)
-						</button>
+						<div className="absolute top-0 left-0 right-0 h-10 bg-gradient-to-b from-background/80 to-transparent pointer-events-none z-10 flex items-start justify-end px-4 pt-2 opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300">
+							<button
+								type="button"
+								onClick={() => toggleZenMode()}
+								className="pointer-events-auto text-[10px] text-muted-foreground/60 hover:text-muted-foreground bg-background/60 backdrop-blur px-2 py-1 rounded border border-border/30 transition-colors"
+							>
+								Zen終了 · F11
+							</button>
+						</div>
 					)}
 				</div>
 			</div>
@@ -179,6 +181,10 @@ export function AppShell() {
 			<CommandPalette
 				isOpen={isCommandPaletteOpen}
 				onClose={() => setCommandPaletteOpen(false)}
+				onOpenSearch={() => {
+					setCommandPaletteOpen(false);
+					setIsQuickSwitcherOpen(true);
+				}}
 				splitMode={splitMode}
 				setSplitMode={setSplitMode}
 			/>

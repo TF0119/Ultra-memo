@@ -264,7 +264,15 @@ pub fn toggle_markdown_view(state: State<'_, AppState>, id: String) -> Result<bo
 
 fn is_placeholder_title(title: &str) -> bool {
     let t = title.trim();
-    t.is_empty() || t == "無題" || t == "New Note" || t == "New Child" || t.starts_with("メモ ")
+    if t.is_empty() || t == "無題" || t == "New Note" || t == "New Child" || t.starts_with("メモ ") {
+        return true;
+    }
+    // Quick capture timestamp: "06/29 14:30"
+    let parts: Vec<&str> = t.split(' ').collect();
+    if parts.len() == 2 && parts[0].contains('/') && parts[1].contains(':') {
+        return true;
+    }
+    false
 }
 
 fn title_from_content(content: &str) -> Option<String> {
@@ -284,7 +292,7 @@ fn title_from_content(content: &str) -> Option<String> {
 
 /// Quick capture: root-level note at top, timestamp title, ready to type
 #[tauri::command]
-pub fn create_quick_note(state: State<'_, AppState>) -> Result<crate::commands::tree::TreeNode, String> {
+pub fn create_quick_note(state: State<'_, AppState>, title: Option<String>) -> Result<crate::commands::tree::TreeNode, String> {
     let mut conn = state.db.lock().map_err(|_| "Failed to lock database")?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -302,12 +310,12 @@ pub fn create_quick_note(state: State<'_, AppState>) -> Result<crate::commands::
         .map_err(|e| e.to_string())?;
 
     let new_order = min_order.unwrap_or(1024.0) - 1024.0;
-    let title = format_timestamp_title(now);
+    let note_title = title.unwrap_or_else(|| format_timestamp_title(now));
 
     tx.execute(
         "INSERT INTO notes (parent_id, title, content, order_key, is_open, is_deleted, created_at, updated_at)
          VALUES (NULL, ?, '', ?, 0, 0, ?, ?)",
-        params![title, new_order, now, now],
+        params![note_title, new_order, now, now],
     )
     .map_err(|e| e.to_string())?;
 
@@ -317,7 +325,67 @@ pub fn create_quick_note(state: State<'_, AppState>) -> Result<crate::commands::
     Ok(crate::commands::tree::TreeNode {
         id: new_id.to_string(),
         parent_id: None,
-        title: title.clone(),
+        title: note_title.clone(),
+        content_preview: String::new(),
+        content_length: 0,
+        order_key: new_order,
+        is_open: false,
+        is_pinned: false,
+        is_markdown_view: false,
+        created_at: now,
+        updated_at: now,
+        has_children: false,
+    })
+}
+
+/// Create a note with a specific title (for wiki link targets)
+#[tauri::command]
+pub fn create_note_with_title(
+    state: State<'_, AppState>,
+    title: String,
+    parent_id: Option<String>,
+) -> Result<crate::commands::tree::TreeNode, String> {
+    let mut conn = state.db.lock().map_err(|_| "Failed to lock database")?;
+    let parent_id_int = match parent_id.as_ref() {
+        Some(id_str) => Some(id_str.parse::<i64>().map_err(|_| "Invalid Parent ID")?),
+        None => None,
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let max_order: Option<f64> = match parent_id_int {
+        Some(pid) => tx.query_row(
+            "SELECT MAX(order_key) FROM notes WHERE parent_id = ?",
+            [pid],
+            |row| row.get::<_, Option<f64>>(0),
+        ).map_err(|e| e.to_string())?,
+        None => tx.query_row(
+            "SELECT MAX(order_key) FROM notes WHERE parent_id IS NULL",
+            [],
+            |row| row.get::<_, Option<f64>>(0),
+        ).map_err(|e| e.to_string())?,
+    };
+
+    let new_order = max_order.unwrap_or(0.0) + 1024.0;
+
+    tx.execute(
+        "INSERT INTO notes (parent_id, title, content, order_key, is_open, is_deleted, created_at, updated_at)
+         VALUES (?, ?, '', ?, 0, 0, ?, ?)",
+        params![parent_id_int, title.trim(), new_order, now, now],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let new_id = tx.last_insert_rowid();
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(crate::commands::tree::TreeNode {
+        id: new_id.to_string(),
+        parent_id: parent_id,
+        title: title.trim().to_string(),
         content_preview: String::new(),
         content_length: 0,
         order_key: new_order,

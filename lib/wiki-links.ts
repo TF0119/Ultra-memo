@@ -12,5 +12,8 @@ export function extractWikiLinks(content: string): string[] {
 
 export function isPlaceholderTitle(title: string): boolean {
 	const t = title.trim();
-	return !t || t === '無題' || t === 'New Note' || t === 'New Child' || t.startsWith('メモ ');
+	if (!t || t === '無題' || t === 'New Note' || t === 'New Child' || t.startsWith('メモ ')) return true;
+	// Quick capture timestamp titles e.g. "06/29 14:30"
+	if (/^\d{1,2}\/\d{1,2} \d{1,2}:\d{2}$/.test(t)) return true;
+	return false;
 }

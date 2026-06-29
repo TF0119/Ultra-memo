@@ -49,6 +49,7 @@ pub fn run() {
       commands::tree::get_path,
       commands::export::export_markdown_tree,
       commands::notes::create_quick_note,
+      commands::notes::create_note_with_title,
       commands::links::resolve_wiki_link,
       commands::links::get_backlinks,
       commands::batch::batch_soft_delete,

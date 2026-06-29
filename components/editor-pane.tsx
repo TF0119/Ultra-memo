@@ -40,7 +40,7 @@ interface EditorPaneProps {
 }
 
 export function EditorPane({ paneId }: EditorPaneProps) {
-	const { treeNodes, activeNodeIds, focusedPane, noteContents, loadingNoteIds, updateNoteContent, setFocusedPane, setSaveStatus, openNote, resolveWikiLink, isSyncScrollEnabled, syncScrollRatio, syncScrollSource, setSyncScrollRatio } =
+	const { treeNodes, activeNodeIds, focusedPane, noteContents, loadingNoteIds, updateNoteContent, patchLocalContent, setFocusedPane, setSaveStatus, openNote, openWikiLink, isSyncScrollEnabled, syncScrollRatio, syncScrollSource, setSyncScrollRatio } =
 		useNoteStore();
 
 	const activeNodeId = activeNodeIds[paneId];
@@ -101,7 +101,10 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 
 			<div className="flex-1 relative overflow-hidden">
 				{isLoading ? (
-					<div className="h-full flex items-center justify-center text-muted-foreground text-sm">読み込み中...</div>
+					<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-3 bg-black">
+						<div className="w-5 h-5 border-2 border-white/10 border-t-white/50 rounded-full animate-spin" />
+						<span className="text-xs opacity-50">読み込み中...</span>
+					</div>
 				) : activeNode ? (
 					<CodeMirrorEditor
 						key={activeNode.id}
@@ -113,10 +116,7 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 						syncScrollRatio={syncScrollRatio}
 						syncScrollSource={syncScrollSource}
 						onScrollSync={setSyncScrollRatio}
-						onWikiNavigate={async (title) => {
-							const id = await resolveWikiLink(title);
-							if (id) openNote(id, paneId);
-						}}
+						onWikiNavigate={(title) => openWikiLink(title, paneId)}
 						getNoteTitles={() => treeNodes.map((n) => n.title)}
 						onSave={(c) => {
 							setSaveStatus('saving');
@@ -434,7 +434,7 @@ function CodeMirrorEditor({
 			markdown(),
 			themeConfig,
 			search({ top: true }),
-			wikiLinkPlugin(onWikiNavigate),
+			wikiLinkPlugin(onWikiNavigate, (t) => getNoteTitles().some((n) => n.toLowerCase() === t.toLowerCase())),
 			wikiLinkAutocomplete(getNoteTitles),
 			checkboxClickHandler((lineNum, checked) => {
 				const view = viewRef.current;
@@ -457,7 +457,11 @@ function CodeMirrorEditor({
 				},
 			]),
 			EditorView.updateListener.of((update) => {
-				if (update.docChanged) setIsDirty(true);
+				if (update.docChanged) {
+					setIsDirty(true);
+					const doc = update.state.doc.toString();
+					useNoteStore.getState().patchLocalContent(activeNodeId, doc);
+				}
 			}),
 		];
 

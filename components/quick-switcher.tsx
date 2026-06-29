@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useNoteStore } from '@/lib/store';
 import { Search, FileText } from 'lucide-react';
@@ -15,11 +15,20 @@ export function QuickSwitcher({ isOpen, onClose }: QuickSwitcherProps) {
 	const [query, setQuery] = useState('');
 	const [selectedIndex, setSelectedIndex] = useState(0);
 	const [results, setResults] = useState<any[]>([]);
-	const { openNote, focusedPane } = useNoteStore();
+	const { openNote, focusedPane, treeNodes, openNodeIds } = useNoteStore();
 	const inputRef = useRef<HTMLInputElement>(null);
 	const resultsRef = useRef<HTMLDivElement>(null);
 
-	// Search effect
+	// Recent notes when no query
+	const recentNotes = useMemo(() => {
+		if (query.trim()) return [];
+		return [...openNodeIds]
+			.map((id) => treeNodes.find((n) => n.id === id))
+			.filter(Boolean)
+			.slice(0, 12) as typeof treeNodes;
+	}, [query, openNodeIds, treeNodes]);
+
+	const displayResults = query.trim() ? results : recentNotes.map((n) => ({ id: n.id, title: n.title, snippet: n.contentPreview }));
 	useEffect(() => {
 		if (!query.trim()) {
 			setResults([]);
@@ -68,15 +77,15 @@ export function QuickSwitcher({ isOpen, onClose }: QuickSwitcherProps) {
 				onClose();
 			} else if (e.key === 'ArrowDown') {
 				e.preventDefault();
-				setSelectedIndex((prev) => Math.min(prev + 1, results.length - 1));
+				setSelectedIndex((prev) => Math.min(prev + 1, displayResults.length - 1));
 			} else if (e.key === 'ArrowUp') {
 				e.preventDefault();
 				setSelectedIndex((prev) => Math.max(prev - 1, 0));
 			} else if (e.key === 'Enter') {
 				e.preventDefault();
-				if (results[selectedIndex]) {
+				if (displayResults[selectedIndex]) {
 					const targetPane = e.ctrlKey ? (focusedPane === 1 ? 2 : 1) : focusedPane;
-					openNote(results[selectedIndex].id, targetPane);
+					openNote(displayResults[selectedIndex].id, targetPane);
 					onClose();
 				}
 			}
@@ -84,7 +93,7 @@ export function QuickSwitcher({ isOpen, onClose }: QuickSwitcherProps) {
 
 		window.addEventListener('keydown', handleKeyDown);
 		return () => window.removeEventListener('keydown', handleKeyDown);
-	}, [isOpen, results, selectedIndex, onClose, openNote, focusedPane]);
+	}, [isOpen, displayResults, selectedIndex, onClose, openNote, focusedPane]);
 
 	if (!isOpen) return null;
 
@@ -114,21 +123,22 @@ export function QuickSwitcher({ isOpen, onClose }: QuickSwitcherProps) {
 
 					{/* Results */}
 					<div ref={resultsRef} className="max-h-[60vh] overflow-y-auto">
-						{results.length === 0 && query.trim() && (
+						{displayResults.length === 0 && query.trim() && (
 							<div className="p-12 text-center">
 								<FileText className="w-12 h-12 mx-auto opacity-10 mb-3" />
 								<p className="text-sm text-muted-foreground">「{query}」に一致するノートが見つかりませんでした</p>
 							</div>
 						)}
 
-						{results.length === 0 && !query.trim() && (
+						{displayResults.length === 0 && !query.trim() && (
 							<div className="p-12 text-center">
 								<div className="flex items-center justify-center gap-2 mb-3 opacity-20">
 									<kbd className="px-2 py-1 text-lg font-mono border border-border/50 rounded">Ctrl</kbd>
 									<span className="text-2xl font-bold">+</span>
 									<span className="text-2xl font-bold">P</span>
 								</div>
-								<p className="text-sm text-muted-foreground">ノート名または内容を検索してください</p>
+								<p className="text-sm text-muted-foreground">ノート名または内容を検索</p>
+								<p className="text-xs text-muted-foreground/50 mt-2">開いたことのあるノートがここに表示されます</p>
 								<div className="mt-4 flex items-center justify-center gap-4 text-xs text-muted-foreground/60">
 									<span className="flex items-center gap-1">
 										<kbd className="px-1.5 py-0.5 bg-muted/30 border border-border/50 rounded">↑↓</kbd>
@@ -146,7 +156,13 @@ export function QuickSwitcher({ isOpen, onClose }: QuickSwitcherProps) {
 							</div>
 						)}
 
-						{results.map((node, index) => {
+						{!query.trim() && recentNotes.length > 0 && (
+							<div className="px-4 py-2 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider border-b border-border/30">
+								最近開いたノート
+							</div>
+						)}
+
+						{displayResults.map((node, index) => {
 							return (
 								<div
 									key={node.id}
@@ -184,9 +200,9 @@ export function QuickSwitcher({ isOpen, onClose }: QuickSwitcherProps) {
 						})}
 					</div>
 
-					{results.length > 0 && (
+					{displayResults.length > 0 && (
 						<div className="px-4 py-2.5 border-t border-border bg-muted/20 flex items-center justify-between text-xs text-muted-foreground">
-							<span>{results.length} 件の結果</span>
+							<span>{query.trim() ? `${displayResults.length} 件の結果` : `最近 ${displayResults.length} 件`}</span>
 							<div className="flex items-center gap-3">
 								<span className="flex items-center gap-1">
 									<kbd className="px-1.5 py-0.5 bg-background/50 border border-border rounded">Ctrl+Enter</kbd>

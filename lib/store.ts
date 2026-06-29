@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { isPlaceholderTitle } from './wiki-links';
+import { loadSortMode, saveSortMode, loadFollowActive, saveFollowActive, loadSyncScroll, saveSyncScroll, formatQuickCaptureTitle } from './preferences';
 
 export interface TreeNode {
 	id: string;
@@ -82,6 +83,8 @@ interface NoteStore {
 	exportMarkdownTree: () => Promise<void>;
 	getNodePath: (id: string) => Promise<string[]>;
 	resolveWikiLink: (title: string) => Promise<string | null>;
+	openWikiLink: (title: string, paneId: 1 | 2) => Promise<void>;
+	patchLocalContent: (id: string, content: string) => void;
 	loadBacklinks: (id: string) => Promise<void>;
 	goBack: () => void;
 	goForward: () => void;
@@ -117,13 +120,13 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	focusedPane: 1,
 	expandedNodeIds: new Set(),
 	openNodeIds: new Set(),
-	isFollowActiveEnabled: true,
-	isSyncScrollEnabled: false,
+	isFollowActiveEnabled: loadFollowActive(),
+	isSyncScrollEnabled: loadSyncScroll(),
 	syncScrollRatio: 0,
 	syncScrollSource: null,
 	isZenMode: false,
 	isCommandPaletteOpen: false,
-	sortMode: 'recent',
+	sortMode: loadSortMode(),
 	isInitialized: false,
 	focusTarget: { nodeId: null, paneId: 1, trigger: 0 },
 	history: [],
@@ -219,8 +222,11 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 
 	openNote: async (id, paneId, shouldFocusEditor = true, skipHistory = false) => {
 		try {
-			await get().loadNoteContent(id);
-			await invoke('touch_open', { id });
+			const [content] = await Promise.all([
+				get().loadNoteContent(id),
+				invoke('touch_open', { id }),
+			]);
+			void content;
 			const openNodes = await invoke<string[]>('get_open_list', { limit: 50 });
 			get().loadBacklinks(id);
 
@@ -274,7 +280,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 				if (node && isPlaceholderTitle(title)) {
 					const firstLine = content.split('\n').find((l) => l.trim());
 					if (firstLine) {
-						title = firstLine.trim().replace(/^#+\s*/, '').slice(0, 40);
+						title = firstLine.trim().replace(/^#+\s*/, '').replace(/^- \[[ x]\]\s*/, '').slice(0, 40);
 					}
 				}
 				return {
@@ -284,10 +290,31 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 					),
 				};
 			});
+			get().loadBacklinks(id);
 		} catch (error) {
 			console.error('Failed to update note content:', error);
 			set({ saveStatus: 'error' });
 		}
+	},
+
+	patchLocalContent: (id, content) => {
+		set((state) => {
+			const preview = content.slice(0, 80);
+			const node = state.treeNodes.find((n) => n.id === id);
+			let title = node?.title ?? '無題';
+			if (node && isPlaceholderTitle(title)) {
+				const firstLine = content.split('\n').find((l) => l.trim());
+				if (firstLine) {
+					title = firstLine.trim().replace(/^#+\s*/, '').replace(/^- \[[ x]\]\s*/, '').slice(0, 40);
+				}
+			}
+			return {
+				noteContents: { ...state.noteContents, [id]: content },
+				treeNodes: state.treeNodes.map((n) =>
+					n.id === id ? { ...n, title, contentPreview: preview, contentLength: content.length } : n
+				),
+			};
+		});
 	},
 
 	createSibling: async (selectedId) => {
@@ -329,14 +356,16 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 
 	quickCapture: async () => {
 		try {
-			const newNode = mapTreeNode(await invoke<Record<string, unknown>>('create_quick_note'));
+			const title = formatQuickCaptureTitle();
+			const newNode = mapTreeNode(await invoke<Record<string, unknown>>('create_quick_note', { title }));
 			set((state) => ({
 				treeNodes: [newNode, ...state.treeNodes],
 				selectedNodeId: newNode.id,
 				selectedNodeIds: new Set([newNode.id]),
+				editingNodeId: null,
 				noteContents: { ...state.noteContents, [newNode.id]: '' },
 			}));
-			await get().openNote(newNode.id, get().focusedPane);
+			await get().openNote(newNode.id, get().focusedPane, true);
 		} catch (error) {
 			console.error('Failed to quick capture:', error);
 		}
@@ -371,6 +400,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	batchDelete: async () => {
 		const ids = [...get().selectedNodeIds];
 		if (!ids.length) return;
+		if (!confirm(`${ids.length}件のノートを削除しますか？`)) return;
 		try {
 			await invoke('batch_soft_delete', { ids });
 			await get().refreshTree();
@@ -473,10 +503,25 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 		}));
 	},
 
-	toggleFollowActive: () => set((s) => ({ isFollowActiveEnabled: !s.isFollowActiveEnabled })),
-	toggleSyncScroll: () => set((s) => ({ isSyncScrollEnabled: !s.isSyncScrollEnabled })),
+	toggleFollowActive: () =>
+		set((s) => {
+			const next = !s.isFollowActiveEnabled;
+			saveFollowActive(next);
+			return { isFollowActiveEnabled: next };
+		}),
+	toggleSyncScroll: () =>
+		set((s) => {
+			const next = !s.isSyncScrollEnabled;
+			saveSyncScroll(next);
+			return { isSyncScrollEnabled: next };
+		}),
 	toggleZenMode: () => set((s) => ({ isZenMode: !s.isZenMode })),
-	toggleSortMode: () => set((s) => ({ sortMode: s.sortMode === 'manual' ? 'recent' : 'manual' })),
+	toggleSortMode: () =>
+		set((s) => {
+			const next = s.sortMode === 'manual' ? 'recent' : 'manual';
+			saveSortMode(next);
+			return { sortMode: next };
+		}),
 	setCommandPaletteOpen: (open) => set({ isCommandPaletteOpen: open }),
 
 	setSyncScrollRatio: (ratio, source) => set({ syncScrollRatio: ratio, syncScrollSource: source }),
@@ -504,6 +549,23 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 			const node = get().treeNodes.find((n) => n.title.toLowerCase() === title.toLowerCase());
 			return node?.id ?? null;
 		}
+	},
+
+	openWikiLink: async (title, paneId) => {
+		const trimmed = title.trim();
+		if (!trimmed) return;
+		let id = await get().resolveWikiLink(trimmed);
+		if (!id) {
+			const newNode = mapTreeNode(
+				await invoke<Record<string, unknown>>('create_note_with_title', { title: trimmed, parentId: null })
+			);
+			set((state) => ({
+				treeNodes: [...state.treeNodes, newNode],
+				noteContents: { ...state.noteContents, [newNode.id]: '' },
+			}));
+			id = newNode.id;
+		}
+		await get().openNote(id, paneId);
 	},
 
 	loadBacklinks: async (id) => {

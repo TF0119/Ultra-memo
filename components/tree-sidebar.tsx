@@ -7,6 +7,8 @@ import { useNoteStore, type TreeNode, flattenVisible } from '@/lib/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TreeItem } from './tree-item';
+import { MultiSelectBar } from './multi-select-bar';
+import { formatRelativeTime } from '@/lib/preferences';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
@@ -214,9 +216,11 @@ export function TreeSidebar() {
 					<p className="text-[10px] text-muted-foreground/60 px-0.5">新しい順 — 雑に積んでOK</p>
 				)}
 				{isShiftHeld && activeDragId && (
-					<p className="text-[10px] text-primary px-0.5 animate-pulse">Shift+ドロップで子ノート化</p>
+					<p className="text-[10px] text-primary font-medium px-0.5 animate-pulse">↳ ここにドロップで子ノート化</p>
 				)}
 			</div>
+
+			<MultiSelectBar />
 
 			<DndContext
 				sensors={sensors}
@@ -314,7 +318,13 @@ export function TreeSidebar() {
 
 			<div className="px-4 py-1.5 border-t border-sidebar-border text-[10px] text-muted-foreground flex-shrink-0 bg-sidebar/60 font-medium tracking-tight flex justify-between">
 				<span>{treeNodes.length} items{selectedNodeIds.size > 1 ? ` · ${selectedNodeIds.size} 選択` : ''}</span>
-				<span className="opacity-50">{sortMode === 'recent' ? '新しい順' : '手動順'}</span>
+				<span className="opacity-50">
+					{sortMode === 'recent' ? '新しい順' : '手動順'}
+					{selectedNodeId && sortMode === 'recent' && (() => {
+						const n = treeNodes.find((x) => x.id === selectedNodeId);
+						return n ? ` · ${formatRelativeTime(n.updatedAt)}` : '';
+					})()}
+				</span>
 			</div>
 		</div>
 	);

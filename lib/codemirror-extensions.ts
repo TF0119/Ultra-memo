@@ -3,14 +3,22 @@ import { RangeSetBuilder, EditorState, Compartment } from '@codemirror/state';
 import { autocompletion, CompletionContext } from '@codemirror/autocomplete';
 
 class WikiLinkWidget extends WidgetType {
-	constructor(private title: string, private onClick: (title: string) => void) {
+	constructor(
+		private title: string,
+		private onClick: (title: string) => void,
+		private exists: boolean
+	) {
 		super();
 	}
 	toDOM() {
 		const span = document.createElement('span');
 		span.className = 'cm-wiki-link';
 		span.textContent = this.title;
-		span.style.cssText = 'color:#7dd3fc;cursor:pointer;text-decoration:underline;text-underline-offset:2px';
+		span.title = this.exists ? `[[${this.title}]] へ移動` : `[[${this.title}]] を作成して開く`;
+		span.style.cssText = this.exists
+			? 'color:#7dd3fc;cursor:pointer;text-decoration:underline;text-underline-offset:2px'
+			: 'color:#fbbf24;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;opacity:0.85';
+		span.addEventListener('mousedown', (e) => e.preventDefault());
 		span.addEventListener('click', (e) => {
 			e.preventDefault();
 			e.stopPropagation();
@@ -20,7 +28,7 @@ class WikiLinkWidget extends WidgetType {
 	}
 }
 
-export function wikiLinkPlugin(onNavigate: (title: string) => void) {
+export function wikiLinkPlugin(onNavigate: (title: string) => void, titleExists: (title: string) => boolean) {
 	return ViewPlugin.fromClass(
 		class {
 			decorations: DecorationSet;
@@ -45,7 +53,7 @@ export function wikiLinkPlugin(onNavigate: (title: string) => void) {
 						from,
 						to,
 						Decoration.replace({
-							widget: new WikiLinkWidget(title, onNavigate),
+							widget: new WikiLinkWidget(title, onNavigate, titleExists(title)),
 						})
 					);
 				}
