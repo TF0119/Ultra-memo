@@ -99,6 +99,9 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 					))}
 				</div>
 				<div className="flex items-center gap-2">
+					{activeNode && activeNode.contentLength > 0 && (
+						<span className="text-[10px] text-muted-foreground/35 tabular-nums">{activeNode.contentLength.toLocaleString()} 文字</span>
+					)}
 					{activeNode && <MarkdownToggle nodeId={activeNode.id} isMarkdownView={activeNode.isMarkdownView} />}
 					<StatusIndicator />
 				</div>
