@@ -28,3 +28,7 @@ export function restoreEditorSession(noteId: string, view: EditorView): boolean 
 	view.scrollDOM.scrollTop = session.scrollTop;
 	return true;
 }
+
+export function clearEditorSession(noteId: string) {
+	sessions.delete(noteId);
+}

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { isPlaceholderTitle } from './wiki-links';
 import { loadSortMode, saveSortMode, loadFollowActive, saveFollowActive, loadSyncScroll, saveSyncScroll, formatQuickCaptureTitle } from './preferences';
+import { clearEditorSession } from './editor-session';
 
 export interface TreeNode {
 	id: string;
@@ -162,7 +163,11 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 			}
 			set(initialState);
 			if (openNodes.length > 0) {
-				await get().loadNoteContent(openNodes[0]);
+				try {
+					await get().loadNoteContent(openNodes[0]);
+				} catch {
+					// failedNoteIds tracks load failure for UI retry
+				}
 			}
 		} catch (error) {
 			console.error('Failed to initialize store:', error);
@@ -671,6 +676,7 @@ function purgeNotesFromState(state: NoteStore, ids: string[]) {
 		delete noteContents[id];
 		delete contentSaveSeq[id];
 		failedNoteIds.delete(id);
+		clearEditorSession(id);
 	}
 	const activeNodeIds = { ...state.activeNodeIds };
 	for (const pane of [1, 2] as const) {
