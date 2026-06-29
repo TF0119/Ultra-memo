@@ -21,7 +21,7 @@ export function MultiSelectBar() {
 				<Trash2 className="w-3 h-3" />
 				削除
 			</Button>
-			<Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => clearSelection()} title="選択解除">
+			<Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => clearSelection()} title="選択解除 (Esc)">
 				<X className="w-3.5 h-3.5" />
 			</Button>
 		</div>
