@@ -55,5 +55,6 @@ export const TEMPLATES: Template[] = [
 export function applyTemplate(template: Template): string {
 	const now = new Date();
 	const date = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
-	return template.content.replace(/\{\{date\}\}/g, date);
+	const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+	return template.content.replace(/\{\{date\}\}/g, date).replace(/\{\{time\}\}/g, time);
 }
