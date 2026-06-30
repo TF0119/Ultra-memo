@@ -20,6 +20,7 @@ interface TreeItemProps {
 	isEditing: boolean;
 	isNestTarget?: boolean;
 	isOverlay?: boolean;
+	dragDisabled?: boolean;
 	onSelect: (id: string, e: React.MouseEvent) => void;
 	onToggle: (id: string, e: React.MouseEvent) => void;
 	onOpenNote: (id: string) => void;
@@ -42,6 +43,7 @@ export function TreeItem({
 	isEditing,
 	isNestTarget,
 	isOverlay,
+	dragDisabled,
 	onSelect,
 	onToggle,
 	onOpenNote,
@@ -54,7 +56,7 @@ export function TreeItem({
 }: TreeItemProps) {
 	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
 		id: node.id,
-		disabled: isEditing,
+		disabled: isEditing || dragDisabled,
 	});
 	const inputRef = useRef<HTMLInputElement>(null);
 	const editStartRef = useRef(0);

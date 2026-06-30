@@ -354,7 +354,7 @@ function CodeMirrorEditor({
 			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
 			previewTimerRef.current = setTimeout(() => {
 				useNoteStore.getState().patchLocalContent(activeNodeId, doc);
-			}, 350);
+			}, 500);
 		},
 		[activeNodeId]
 	);

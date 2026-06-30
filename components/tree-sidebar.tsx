@@ -105,6 +105,12 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 	const activeNodeId = activeNodeIds[focusedPane];
 
 	useEffect(() => {
+		if (!editingNodeId) return;
+		const index = displayedNodes.findIndex((n) => n.node.id === editingNodeId);
+		if (index !== -1) rowVirtualizer.scrollToIndex(index, { align: 'auto' });
+	}, [editingNodeId, displayedNodes, rowVirtualizer]);
+
+	useEffect(() => {
 		if (!isFollowActiveEnabled || isManualScrolling || !activeNodeId) return;
 		const index = displayedNodes.findIndex((n) => n.node.id === activeNodeId);
 		// 'auto' keeps the active note in view without re-centering (and jumping) on
@@ -304,7 +310,10 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 			<DndContext
 				sensors={sensors}
 				collisionDetection={closestCenter}
-				onDragStart={(e) => setActiveDragId(String(e.active.id))}
+				onDragStart={(e) => {
+					if (searchQuery) return;
+					setActiveDragId(String(e.active.id));
+				}}
 				onDragOver={handleDragOver}
 				onDragEnd={handleDragEnd}
 			>
@@ -362,6 +371,7 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 												isExpanded={expandedNodeIds.has(node.id)}
 												isEditing={editingNodeId === node.id}
 												isNestTarget={nestTargetId === node.id}
+												dragDisabled={!!searchQuery}
 												onSelect={handleSelect}
 												onToggle={(id, e) => { e.stopPropagation(); toggleExpanded(id); }}
 												onOpenNote={(id) => openNote(id, focusedPane, false)}
