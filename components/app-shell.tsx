@@ -123,6 +123,12 @@ export function AppShell() {
 				setIsQuickSwitcherOpen(true);
 			}
 
+			if (e.ctrlKey && e.shiftKey && (e.key === 'f' || e.key === 'F') && !modalOpen) {
+				e.preventDefault();
+				window.dispatchEvent(new Event('ultra-memo:focus-tree-search'));
+				return;
+			}
+
 			if (e.ctrlKey && !e.shiftKey && (e.key === 'n' || e.key === 'N')) {
 				// Works even while typing in the editor — Ctrl+N is "new note".
 				e.preventDefault();

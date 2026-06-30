@@ -60,6 +60,15 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 		return () => clearTimeout(timer);
 	}, [searchInput]);
 
+	useEffect(() => {
+		const focusSearch = () => {
+			searchInputRef.current?.focus();
+			searchInputRef.current?.select();
+		};
+		window.addEventListener('ultra-memo:focus-tree-search', focusSearch);
+		return () => window.removeEventListener('ultra-memo:focus-tree-search', focusSearch);
+	}, []);
+
 	const sensors = useSensors(
 		useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
 		useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
