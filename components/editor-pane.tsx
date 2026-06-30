@@ -552,15 +552,16 @@ function CodeMirrorEditor({
 					opacity: '0.8',
 				},
 				// Keep the active-line tint barely-there so it never competes with the
-				// selection highlight, which must clearly show what is selected.
+				// selection highlight. Selection is a translucent white wash to match
+				// the monochrome black/white theme (no colored accent).
 				'.cm-activeLine': {
 					backgroundColor: 'rgba(255,255,255,0.035)',
 				},
 				'.cm-selectionBackground, .cm-content ::selection, ::selection': {
-					backgroundColor: 'rgba(86,142,214,0.45) !important',
+					backgroundColor: 'rgba(255,255,255,0.20) !important',
 				},
 				'&.cm-focused .cm-selectionBackground': {
-					backgroundColor: 'rgba(86,142,214,0.55) !important',
+					backgroundColor: 'rgba(255,255,255,0.27) !important',
 				},
 			},
 			{ dark: true }
