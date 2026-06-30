@@ -309,6 +309,8 @@ function CodeMirrorEditor({
 	isZenMode: boolean;
 }) {
 	const { focusTarget, contentSaveSeq, isLineWrapEnabled } = useNoteStore();
+	const treeNodes = useNoteStore((s) => s.treeNodes);
+	const wikiLinkRefreshCounterRef = useRef(0);
 	const lineWrapCompartmentRef = useRef<Compartment | null>(null);
 	const wysiwygCompartmentRef = useRef<Compartment | null>(null);
 	if (!lineWrapCompartmentRef.current) lineWrapCompartmentRef.current = new Compartment();
@@ -346,6 +348,12 @@ function CodeMirrorEditor({
 	isFocusedRef.current = isFocused;
 	const isSyncScrollEnabledRef = useRef(isSyncScrollEnabled);
 	isSyncScrollEnabledRef.current = isSyncScrollEnabled;
+
+	useEffect(() => {
+		wikiLinkRefreshCounterRef.current += 1;
+		const view = viewRef.current;
+		if (view) view.dispatch({});
+	}, [treeNodes]);
 	const isComposingRef = useRef(false);
 	const [compositionTick, setCompositionTick] = useState(0);
 	const onCharCountRef = useRef(onCharCount);
@@ -748,7 +756,11 @@ function CodeMirrorEditor({
 			markdownAutoBullet(),
 			editorPlaceholder(),
 			typewriterScrollExtension(() => isZenModeRef.current && isFocusedRef.current),
-			wikiLinkPlugin(onWikiNavigate, (t) => getNoteTitles().some((n) => n.toLowerCase() === t.toLowerCase())),
+			wikiLinkPlugin(
+				onWikiNavigate,
+				(t) => getNoteTitles().some((n) => n.toLowerCase() === t.toLowerCase()),
+				() => wikiLinkRefreshCounterRef.current
+			),
 			wikiLinkAutocomplete(getNoteTitles),
 			checkboxClickHandler((lineNum, checked) => {
 				const view = viewRef.current;

@@ -29,15 +29,22 @@ class WikiLinkWidget extends WidgetType {
 	}
 }
 
-export function wikiLinkPlugin(onNavigate: (title: string, openInOtherPane: boolean) => void, titleExists: (title: string) => boolean) {
+export function wikiLinkPlugin(
+	onNavigate: (title: string, openInOtherPane: boolean) => void,
+	titleExists: (title: string) => boolean,
+	getRefreshTick: () => number
+) {
 	return ViewPlugin.fromClass(
 		class {
 			decorations: DecorationSet;
+			refreshTick = getRefreshTick();
 			constructor(view: EditorView) {
 				this.decorations = this.build(view);
 			}
 			update(update: ViewUpdate) {
-				if (update.docChanged || update.viewportChanged) {
+				const tick = getRefreshTick();
+				if (update.docChanged || update.viewportChanged || tick !== this.refreshTick) {
+					this.refreshTick = tick;
 					this.decorations = this.build(update.view);
 				}
 			}
