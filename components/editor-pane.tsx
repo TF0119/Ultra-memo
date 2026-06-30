@@ -81,7 +81,7 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 		},
 		[paneId, openWikiLink]
 	);
-	const getNoteTitles = useCallback(() => treeNodes.map((n) => n.title), [treeNodes]);
+	const getNoteTitles = useCallback(() => useNoteStore.getState().treeNodes.map((n) => n.title), []);
 
 	return (
 		<div
@@ -226,6 +226,17 @@ function CodeMirrorEditor({
 	const onSaveRef = useRef(onSave);
 	const previewTimerRef = useRef<NodeJS.Timeout | null>(null);
 	const lastSavedContentRef = useRef(content);
+
+	// Volatile values read inside CodeMirror extensions/handlers. Kept in refs so
+	// they don't have to live in the view-creation effect's deps — otherwise the
+	// whole EditorView would be torn down and recreated whenever they change,
+	// stealing focus mid-edit (e.g. on every autosave when `content` updates).
+	const isZenModeRef = useRef(isZenMode);
+	isZenModeRef.current = isZenMode;
+	const isFocusedRef = useRef(isFocused);
+	isFocusedRef.current = isFocused;
+	const isSyncScrollEnabledRef = useRef(isSyncScrollEnabled);
+	isSyncScrollEnabledRef.current = isSyncScrollEnabled;
 
 	const schedulePreview = useCallback(
 		(doc: string) => {
@@ -529,7 +540,7 @@ function CodeMirrorEditor({
 			markdownFormatKeymap(),
 			markdownAutoBullet(),
 			editorPlaceholder(),
-			typewriterScrollExtension(() => isZenMode && isFocused),
+			typewriterScrollExtension(() => isZenModeRef.current && isFocusedRef.current),
 			wikiLinkPlugin(onWikiNavigate, (t) => getNoteTitles().some((n) => n.toLowerCase() === t.toLowerCase())),
 			wikiLinkAutocomplete(getNoteTitles),
 			checkboxClickHandler((lineNum, checked) => {
@@ -598,7 +609,7 @@ function CodeMirrorEditor({
 		}
 
 		const handleScroll = () => {
-			if (!isSyncScrollEnabled || isSyncingRef.current) return;
+			if (!isSyncScrollEnabledRef.current || isSyncingRef.current) return;
 			const scroller = view.scrollDOM;
 			const maxScroll = scroller.scrollHeight - scroller.clientHeight;
 			if (maxScroll <= 0) return;
@@ -613,7 +624,12 @@ function CodeMirrorEditor({
 			flushSave();
 			view.destroy();
 		};
-	}, [isMarkdownView, isSyncScrollEnabled, onScrollSync, paneId, onWikiNavigate, getNoteTitles, flushSave, schedulePreview, isZenMode, isFocused, activeNodeId, content]);
+		// NOTE: intentionally excludes content / isFocused / isZenMode /
+		// isSyncScrollEnabled — those are read via refs so the view is created once
+		// per (note, markdown-mode) and not recreated (which would drop focus).
+		// External content updates are applied by the "sync external content" effect
+		// below without recreating the view.
+	}, [isMarkdownView, onScrollSync, paneId, onWikiNavigate, getNoteTitles, flushSave, schedulePreview, activeNodeId]);
 
 	// Apply synced scroll from the other pane
 	useEffect(() => {
