@@ -1,4 +1,4 @@
-import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate } from '@codemirror/view';
+import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, WidgetType } from '@codemirror/view';
 
 const PLACEHOLDER_TEXT = '思いついたことを、そのまま書く…';
 
@@ -30,8 +30,13 @@ export function editorPlaceholder(text = PLACEHOLDER_TEXT) {
 	);
 }
 
-class PlaceholderWidget {
-	constructor(private text: string) {}
+class PlaceholderWidget extends WidgetType {
+	constructor(private text: string) {
+		super();
+	}
+	eq(other: PlaceholderWidget) {
+		return other.text === this.text;
+	}
 	toDOM() {
 		const span = document.createElement('span');
 		span.textContent = this.text;

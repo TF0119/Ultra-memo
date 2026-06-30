@@ -71,6 +71,18 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 
 	const breadcrumb = activeNode ? getBreadcrumb(activeNode.id) : [];
 
+	// Stable callbacks — passing inline functions here makes CodeMirrorEditor's
+	// view-creation effect re-run (and tear down/recreate the EditorView) on every
+	// render, which can spin into an infinite update loop (React error #185).
+	const handleWikiNavigate = useCallback(
+		(title: string, openInOtherPane?: boolean) => {
+			const targetPane = openInOtherPane ? ((paneId === 1 ? 2 : 1) as 1 | 2) : paneId;
+			openWikiLink(title, targetPane);
+		},
+		[paneId, openWikiLink]
+	);
+	const getNoteTitles = useCallback(() => treeNodes.map((n) => n.title), [treeNodes]);
+
 	return (
 		<div
 			className={cn('h-full flex flex-col transition-all duration-150 relative', isFocused ? 'ring-1 ring-inset ring-foreground/[0.08] bg-background' : 'bg-muted/20')}
@@ -137,11 +149,8 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 						syncScrollRatio={syncScrollRatio}
 						syncScrollSource={syncScrollSource}
 						onScrollSync={setSyncScrollRatio}
-						onWikiNavigate={(title, openInOtherPane) => {
-							const targetPane = openInOtherPane ? ((paneId === 1 ? 2 : 1) as 1 | 2) : paneId;
-							openWikiLink(title, targetPane);
-						}}
-						getNoteTitles={() => treeNodes.map((n) => n.title)}
+						onWikiNavigate={handleWikiNavigate}
+						getNoteTitles={getNoteTitles}
 						isZenMode={isZenMode}
 						onSave={(c) => {
 							setSaveStatus('saving');
