@@ -43,14 +43,21 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 		clearSelection,
 	} = useNoteStore();
 
-	const [searchQuery, setSearchQuery] = useState('');
+	const [searchInput, setSearchInput] = useState('');
+	const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 	const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
 	const [activeDragId, setActiveDragId] = useState<string | null>(null);
 	const [nestTargetId, setNestTargetId] = useState<string | null>(null);
 	const [isShiftHeld, setIsShiftHeld] = useState(false);
 	const [isManualScrolling, setIsManualScrolling] = useState(false);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
+	const searchInputRef = useRef<HTMLInputElement>(null);
 	const manualScrollTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+	useEffect(() => {
+		const timer = setTimeout(() => setDebouncedSearchQuery(searchInput.trim()), 150);
+		return () => clearTimeout(timer);
+	}, [searchInput]);
 
 	const sensors = useSensors(
 		useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -67,9 +74,9 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 
 	const displayedNodes = useMemo(() => {
 		const nodes: { node: TreeNode; depth: number }[] = [];
-		if (searchQuery) {
+		if (debouncedSearchQuery) {
 			return treeNodes
-				.filter((n) => n.title.toLowerCase().includes(searchQuery.toLowerCase()) || n.contentPreview.toLowerCase().includes(searchQuery.toLowerCase()))
+				.filter((n) => n.title.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) || n.contentPreview.toLowerCase().includes(debouncedSearchQuery.toLowerCase()))
 				.map((n) => ({ node: n, depth: 0 }));
 		}
 		const traverse = (parentId: string | null, depth: number) => {
@@ -92,7 +99,7 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 		};
 		traverse(null, 0);
 		return nodes;
-	}, [treeNodes, expandedNodeIds, searchQuery, sortMode]);
+	}, [treeNodes, expandedNodeIds, debouncedSearchQuery, sortMode]);
 
 	const rowVirtualizer = useVirtualizer({
 		count: displayedNodes.length,
@@ -143,7 +150,7 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 		const { active, over } = event;
 		setActiveDragId(null);
 		setNestTargetId(null);
-		if (searchQuery || !over || active.id === over.id) return;
+		if (searchInput || debouncedSearchQuery || !over || active.id === over.id) return;
 
 		const activeId = String(active.id);
 		const overId = String(over.id);
@@ -269,14 +276,15 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 					<div className="relative flex-1">
 						<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60 pointer-events-none" />
 						<Input
+							ref={searchInputRef}
 							type="text"
 							placeholder="検索..."
-							value={searchQuery}
-							onChange={(e) => setSearchQuery(e.target.value)}
+							value={searchInput}
+							onChange={(e) => setSearchInput(e.target.value)}
 							onKeyDown={(e) => {
-								if (e.key === 'Escape' && searchQuery) {
+								if (e.key === 'Escape' && searchInput) {
 									e.stopPropagation();
-									setSearchQuery('');
+									setSearchInput('');
 								}
 							}}
 							className="pl-8 h-8 text-sm bg-background/60 border-border/60"
@@ -301,7 +309,7 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 						<Plus className="w-4 h-4" />
 					</Button>
 				</div>
-				{isShiftHeld && activeDragId && !searchQuery && (
+				{isShiftHeld && activeDragId && !searchInput && (
 					<p className="text-[10px] text-primary font-medium px-0.5 animate-pulse">↳ ここにドロップで子ノート化</p>
 				)}
 			</div>
@@ -312,7 +320,7 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 				sensors={sensors}
 				collisionDetection={closestCenter}
 				onDragStart={(e) => {
-					if (searchQuery) return;
+					if (searchInput) return;
 					setActiveDragId(String(e.active.id));
 				}}
 				onDragOver={handleDragOver}
@@ -329,10 +337,10 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 					<SortableContext items={displayedNodes.map((n) => n.node.id)} strategy={verticalListSortingStrategy}>
 						{displayedNodes.length === 0 ? (
 							<div className="px-4 py-12 text-center text-muted-foreground">
-								{searchQuery ? (
+								{debouncedSearchQuery ? (
 									<>
-										<p className="text-xs font-medium">「{searchQuery}」に一致なし</p>
-										<Button variant="link" size="sm" className="mt-2 text-xs" onClick={() => setSearchQuery('')}>
+										<p className="text-xs font-medium">「{debouncedSearchQuery}」に一致なし</p>
+										<Button variant="link" size="sm" className="mt-2 text-xs" onClick={() => setSearchInput('')}>
 											検索をクリア
 										</Button>
 									</>
@@ -372,7 +380,7 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 												isExpanded={expandedNodeIds.has(node.id)}
 												isEditing={editingNodeId === node.id}
 												isNestTarget={nestTargetId === node.id}
-												dragDisabled={!!searchQuery}
+												dragDisabled={!!searchInput}
 												onSelect={handleSelect}
 												onToggle={(id, e) => { e.stopPropagation(); toggleExpanded(id); }}
 												onOpenNote={(id) => openNote(id, focusedPane, false)}
