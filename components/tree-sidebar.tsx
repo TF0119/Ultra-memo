@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TreeItem } from './tree-item';
 import { MultiSelectBar } from './multi-select-bar';
+import { ConfirmDialog } from './confirm-dialog';
 import { formatRelativeTime } from '@/lib/preferences';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -43,6 +44,7 @@ export function TreeSidebar() {
 	} = useNoteStore();
 
 	const [searchQuery, setSearchQuery] = useState('');
+	const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
 	const [activeDragId, setActiveDragId] = useState<string | null>(null);
 	const [nestTargetId, setNestTargetId] = useState<string | null>(null);
 	const [isShiftHeld, setIsShiftHeld] = useState(false);
@@ -193,7 +195,8 @@ export function TreeSidebar() {
 				toggleExpanded(selectedNodeId);
 			} else if (e.key === 'Delete' || e.key === 'Backspace') {
 				e.preventDefault();
-				if (confirm('削除しますか？')) deleteNote(selectedNodeId);
+				const n = treeNodes.find((x) => x.id === selectedNodeId);
+				setPendingDelete({ id: selectedNodeId, title: n?.title ?? '無題' });
 			} else if (e.key === 'Home') {
 				e.preventDefault();
 				const flat = displayedNodes.map((n) => n.node.id);
@@ -360,7 +363,7 @@ export function TreeSidebar() {
 												onRename={(id) => setEditingNodeId(id)}
 												onCommitRename={(id, title) => renameNote(id, title)}
 												onCancelRename={() => setEditingNodeId(null)}
-												onDelete={(id) => { if (confirm('削除しますか？')) deleteNote(id); }}
+												onDelete={(id) => { const dn = treeNodes.find((x) => x.id === id); setPendingDelete({ id, title: dn?.title ?? '無題' }); }}
 												onTogglePin={(id) => togglePinNote(id)}
 											/>
 										</div>
@@ -408,6 +411,19 @@ export function TreeSidebar() {
 					<span className="hidden lg:inline"> · ←→ Space · Del</span>
 				</span>
 			</div>
+
+			<ConfirmDialog
+				open={!!pendingDelete}
+				onOpenChange={(o) => { if (!o) setPendingDelete(null); }}
+				title="ノートを削除しますか？"
+				description={
+					<>
+						「<span className="text-foreground font-medium">{pendingDelete?.title || '無題'}</span>」をゴミ箱に移動します。あとでゴミ箱から復元できます。
+					</>
+				}
+				confirmLabel="削除"
+				onConfirm={() => { if (pendingDelete) deleteNote(pendingDelete.id); setPendingDelete(null); }}
+			/>
 		</div>
 	);
 }

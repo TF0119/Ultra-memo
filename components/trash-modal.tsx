@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Trash2, RotateCcw, X } from 'lucide-react';
 import { useNoteStore } from '@/lib/store';
+import { ConfirmDialog } from './confirm-dialog';
 
 interface DeletedNote {
 	id: string;
@@ -21,6 +22,7 @@ interface TrashModalProps {
 export function TrashModal({ open, onOpenChange }: TrashModalProps) {
 	const [deletedNotes, setDeletedNotes] = useState<DeletedNote[]>([]);
 	const [loading, setLoading] = useState(false);
+	const [hardDeleteTarget, setHardDeleteTarget] = useState<DeletedNote | null>(null);
 	const { refreshTree } = useNoteStore();
 
 	const loadDeletedNotes = async () => {
@@ -52,7 +54,6 @@ export function TrashModal({ open, onOpenChange }: TrashModalProps) {
 	};
 
 	const handleHardDelete = async (id: string) => {
-		if (!confirm('完全に削除しますか？この操作は取り消せません。')) return;
 		try {
 			await invoke('hard_delete_note', { id });
 			setDeletedNotes((prev) => prev.filter((n) => n.id !== id));
@@ -108,7 +109,7 @@ export function TrashModal({ open, onOpenChange }: TrashModalProps) {
 											size="sm"
 											variant="ghost"
 											className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30"
-											onClick={() => handleHardDelete(note.id)}
+											onClick={() => setHardDeleteTarget(note)}
 											title="完全に削除"
 										>
 											<X className="w-4 h-4" />
@@ -120,6 +121,19 @@ export function TrashModal({ open, onOpenChange }: TrashModalProps) {
 					)}
 				</div>
 			</DialogContent>
+
+			<ConfirmDialog
+				open={!!hardDeleteTarget}
+				onOpenChange={(o) => { if (!o) setHardDeleteTarget(null); }}
+				title="完全に削除しますか？"
+				description={
+					<>
+						「<span className="text-foreground font-medium">{hardDeleteTarget?.title || '無題'}</span>」を完全に削除します。<span className="text-red-400">この操作は取り消せません。</span>
+					</>
+				}
+				confirmLabel="完全に削除"
+				onConfirm={() => { if (hardDeleteTarget) handleHardDelete(hardDeleteTarget.id); setHardDeleteTarget(null); }}
+			/>
 		</Dialog>
 	);
 }

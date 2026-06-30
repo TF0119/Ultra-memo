@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useNoteStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { FileText, Copy, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { StatusIndicator } from './status-indicator';
 import { MarkdownToggle } from './markdown-toggle';
 import { BacklinksPanel } from './backlinks-panel';
@@ -131,14 +132,47 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 						return count > 0 ? <span className="text-[10px] text-muted-foreground/35 tabular-nums">{count.toLocaleString()} 文字</span> : null;
 					})()}
 					{activeNode && (
-						<button
+						<motion.button
 							type="button"
 							onClick={(e) => { e.stopPropagation(); handleCopyContent(); }}
-							className={cn('flex items-center justify-center w-5 h-5 rounded transition-colors hover:bg-muted/50', copied ? 'text-emerald-500' : 'text-muted-foreground/40 hover:text-foreground')}
+							whileTap={{ scale: 0.82 }}
+							className={cn('relative flex items-center justify-center w-5 h-5 rounded transition-colors hover:bg-muted/50', copied ? 'text-emerald-500' : 'text-muted-foreground/40 hover:text-foreground')}
 							title={copied ? 'コピーしました' : '本文をコピー'}
 						>
-							{copied ? <Check className="w-3.5 h-3.5" strokeWidth={2} /> : <Copy className="w-3.5 h-3.5" strokeWidth={2} />}
-						</button>
+							<AnimatePresence mode="wait" initial={false}>
+								{copied ? (
+									<motion.span
+										key="check"
+										initial={{ scale: 0, rotate: -40, opacity: 0 }}
+										animate={{ scale: 1, rotate: 0, opacity: 1 }}
+										exit={{ scale: 0, opacity: 0 }}
+										transition={{ type: 'spring', stiffness: 600, damping: 16 }}
+										className="absolute inset-0 flex items-center justify-center"
+									>
+										<Check className="w-3.5 h-3.5" strokeWidth={2.5} />
+									</motion.span>
+								) : (
+									<motion.span
+										key="copy"
+										initial={{ scale: 0.6, opacity: 0 }}
+										animate={{ scale: 1, opacity: 1 }}
+										exit={{ scale: 0.6, opacity: 0 }}
+										transition={{ duration: 0.12 }}
+										className="absolute inset-0 flex items-center justify-center"
+									>
+										<Copy className="w-3.5 h-3.5" strokeWidth={2} />
+									</motion.span>
+								)}
+							</AnimatePresence>
+							{copied && (
+								<motion.span
+									initial={{ scale: 0.5, opacity: 0.7 }}
+									animate={{ scale: 2, opacity: 0 }}
+									transition={{ duration: 0.55, ease: 'easeOut' }}
+									className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-emerald-500/60"
+								/>
+							)}
+						</motion.button>
 					)}
 					{activeNode && <MarkdownToggle nodeId={activeNode.id} isMarkdownView={activeNode.isMarkdownView} />}
 					<StatusIndicator />
@@ -557,11 +591,20 @@ function CodeMirrorEditor({
 				'.cm-activeLine': {
 					backgroundColor: 'rgba(255,255,255,0.035)',
 				},
-				'.cm-selectionBackground, .cm-content ::selection, ::selection': {
+				'.cm-selectionBackground': {
+					backgroundColor: 'rgba(255,255,255,0.20) !important',
+					borderRadius: '3px',
+				},
+				'.cm-content ::selection, ::selection': {
 					backgroundColor: 'rgba(255,255,255,0.20) !important',
 				},
 				'&.cm-focused .cm-selectionBackground': {
-					backgroundColor: 'rgba(255,255,255,0.27) !important',
+					backgroundColor: 'rgba(255,255,255,0.28) !important',
+				},
+				// Smooth, slightly thicker caret for a more refined feel.
+				'.cm-cursor, .cm-dropCursor': {
+					borderLeftWidth: '2px',
+					borderLeftColor: '#ffffff',
 				},
 			},
 			{ dark: true }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { ChevronRight, ChevronDown, FileText, MoreHorizontal, Pin, Trash2, Edit2, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TreeNode } from '@/lib/store';
@@ -57,14 +57,30 @@ export function TreeItem({
 		disabled: isEditing,
 	});
 	const inputRef = useRef<HTMLInputElement>(null);
+	const editStartRef = useRef(0);
+	const [menuOpen, setMenuOpen] = useState(false);
 
+	// Focus the rename input reliably. It mounts right as the ⋯ menu closes, and the
+	// menu can otherwise pull focus back — so re-assert focus over the first frames.
 	useEffect(() => {
-		if (isEditing) {
-			setTimeout(() => {
-				inputRef.current?.focus();
-				inputRef.current?.select();
-			}, 0);
-		}
+		if (!isEditing) return;
+		editStartRef.current = Date.now();
+		const focus = () => {
+			const el = inputRef.current;
+			if (el) {
+				el.focus();
+				el.select();
+			}
+		};
+		focus();
+		const raf = requestAnimationFrame(focus);
+		const t1 = setTimeout(focus, 30);
+		const t2 = setTimeout(focus, 90);
+		return () => {
+			cancelAnimationFrame(raf);
+			clearTimeout(t1);
+			clearTimeout(t2);
+		};
 	}, [isEditing]);
 
 	const style: React.CSSProperties = {
@@ -86,6 +102,7 @@ export function TreeItem({
 				'group flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none relative focus:outline-none h-8',
 				isActive ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-accent/70 text-foreground',
 				(isSelected || isMultiSelected) && !isActive && 'bg-accent/50',
+				menuOpen && !isActive && 'bg-accent/70',
 				isNestTarget && 'ring-2 ring-inset ring-primary/60 bg-primary/10',
 				isDragging && 'z-50 shadow-lg rounded'
 			)}
@@ -131,7 +148,14 @@ export function TreeItem({
 							onCancelRename();
 						}
 					}}
-					onBlur={(e) => onCommitRename(node.id, e.target.value.trim() || '無題')}
+					onBlur={(e) => {
+						// Ignore the spurious blur caused by the ⋯ menu closing; keep editing.
+						if (Date.now() - editStartRef.current < 250) {
+							inputRef.current?.focus();
+							return;
+						}
+						onCommitRename(node.id, e.target.value.trim() || '無題');
+					}}
 				/>
 			) : (
 				<span className={cn('flex-1 truncate text-[13px] font-normal tracking-tight leading-tight', isPlaceholderTitle(node.title) && !node.contentPreview && 'opacity-40 italic')}>
@@ -139,8 +163,8 @@ export function TreeItem({
 				</span>
 			)}
 
-			<div className={cn('flex items-center opacity-0 group-hover:opacity-100 transition-opacity ml-auto pl-2', isActive ? 'text-primary-foreground' : 'text-muted-foreground')}>
-				<DropdownMenu>
+			<div className={cn('flex items-center transition-opacity ml-auto pl-2', menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100', isActive ? 'text-primary-foreground' : 'text-muted-foreground')}>
+				<DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
 					<DropdownMenuTrigger asChild>
 						<button
 							className={cn(
@@ -154,7 +178,7 @@ export function TreeItem({
 							<MoreHorizontal className="w-3.5 h-3.5" />
 						</button>
 					</DropdownMenuTrigger>
-					<DropdownMenuContent align="start" alignOffset={-5} className="w-40" onCloseAutoFocus={(e) => e.preventDefault()}>
+					<DropdownMenuContent align="start" alignOffset={-5} className="w-44 [&_[role=menuitem]]:text-xs [&_[role=menuitem]]:py-1.5" onCloseAutoFocus={(e) => e.preventDefault()}>
 						<DropdownMenuItem onClick={(e) => { e.stopPropagation(); onRename(node.id); }}>
 							<Edit2 className="w-3.5 h-3.5 mr-2" />名前を変更 <span className="ml-auto text-[10px] opacity-40">F2</span>
 						</DropdownMenuItem>

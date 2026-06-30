@@ -384,8 +384,13 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 				const newExpanded = new Set(state.expandedNodeIds);
 				if (parentId) newExpanded.add(parentId);
 				saveExpandedNodes(newExpanded);
+				// Mark the parent as having children immediately so its expand/collapse
+				// chevron appears the instant the child is created (no tree refresh wait).
+				const treeNodes = parentId
+					? [...state.treeNodes.map((n) => (n.id === parentId ? { ...n, hasChildren: true } : n)), newNode]
+					: [...state.treeNodes, newNode];
 				return {
-					treeNodes: [...state.treeNodes, newNode],
+					treeNodes,
 					selectedNodeId: newNode.id,
 					selectedNodeIds: new Set([newNode.id]),
 					editingNodeId: newNode.id,
