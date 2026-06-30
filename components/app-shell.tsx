@@ -146,12 +146,12 @@ export function AppShell() {
 				setFocusedPane(2);
 			}
 
-			if (e.altKey && e.key === 'ArrowLeft' && !inEditor && !inInput && !modalOpen) {
+			if (e.altKey && e.key === 'ArrowLeft' && !inInput && !modalOpen) {
 				e.preventDefault();
 				goBack();
 			}
 
-			if (e.altKey && e.key === 'ArrowRight' && !inEditor && !inInput && !modalOpen) {
+			if (e.altKey && e.key === 'ArrowRight' && !inInput && !modalOpen) {
 				e.preventDefault();
 				goForward();
 			}
