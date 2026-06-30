@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useNoteStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
-import { FileText } from 'lucide-react';
+import { FileText, Copy, Check } from 'lucide-react';
 import { StatusIndicator } from './status-indicator';
 import { MarkdownToggle } from './markdown-toggle';
 import { BacklinksPanel } from './backlinks-panel';
@@ -54,6 +54,21 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 	const content = activeNodeId ? (noteContents[activeNodeId] ?? '') : '';
 	const isLoading = activeNodeId ? loadingNoteIds.has(activeNodeId) && noteContents[activeNodeId] === undefined : false;
 	const loadFailed = activeNodeId ? failedNoteIds.has(activeNodeId) : false;
+
+	// Live character count, reported by the editor on every doc change (incl. during
+	// IME composition) so the header counter updates immediately, not just on save.
+	const [liveCharCount, setLiveCharCount] = useState<number | null>(null);
+	const handleCharCount = useCallback((n: number) => setLiveCharCount(n), []);
+	useEffect(() => setLiveCharCount(null), [activeNodeId]);
+
+	const [copied, setCopied] = useState(false);
+	const handleCopyContent = useCallback(() => {
+		if (!activeNodeId) return;
+		const text = useNoteStore.getState().noteContents[activeNodeId] ?? content;
+		void navigator.clipboard.writeText(text);
+		setCopied(true);
+		setTimeout(() => setCopied(false), 1200);
+	}, [activeNodeId, content]);
 
 	const getBreadcrumb = (nodeId: string): { id: string; title: string }[] => {
 		const path: { id: string; title: string }[] = [];
@@ -111,8 +126,19 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 					))}
 				</div>
 				<div className="flex items-center gap-2">
-					{activeNode && activeNode.contentLength > 0 && (
-						<span className="text-[10px] text-muted-foreground/35 tabular-nums">{activeNode.contentLength.toLocaleString()} 文字</span>
+					{activeNode && (() => {
+						const count = liveCharCount ?? activeNode.contentLength;
+						return count > 0 ? <span className="text-[10px] text-muted-foreground/35 tabular-nums">{count.toLocaleString()} 文字</span> : null;
+					})()}
+					{activeNode && (
+						<button
+							type="button"
+							onClick={(e) => { e.stopPropagation(); handleCopyContent(); }}
+							className={cn('flex items-center justify-center w-5 h-5 rounded transition-colors hover:bg-muted/50', copied ? 'text-emerald-500' : 'text-muted-foreground/40 hover:text-foreground')}
+							title={copied ? 'コピーしました' : '本文をコピー'}
+						>
+							{copied ? <Check className="w-3.5 h-3.5" strokeWidth={2} /> : <Copy className="w-3.5 h-3.5" strokeWidth={2} />}
+						</button>
 					)}
 					{activeNode && <MarkdownToggle nodeId={activeNode.id} isMarkdownView={activeNode.isMarkdownView} />}
 					<StatusIndicator />
@@ -144,6 +170,7 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 						activeNodeId={activeNode.id}
 						paneId={paneId}
 						content={content}
+						onCharCount={handleCharCount}
 						isMarkdownView={activeNode.isMarkdownView}
 						isSyncScrollEnabled={isSyncScrollEnabled}
 						syncScrollRatio={syncScrollRatio}
@@ -190,6 +217,7 @@ function CodeMirrorEditor({
 	isFocused,
 	activeNodeId,
 	paneId,
+	onCharCount,
 	isMarkdownView,
 	isSyncScrollEnabled,
 	syncScrollRatio,
@@ -205,6 +233,7 @@ function CodeMirrorEditor({
 	isFocused: boolean;
 	activeNodeId: string;
 	paneId: 1 | 2;
+	onCharCount: (n: number) => void;
 	isMarkdownView: boolean;
 	isSyncScrollEnabled: boolean;
 	syncScrollRatio: number;
@@ -237,6 +266,16 @@ function CodeMirrorEditor({
 	isFocusedRef.current = isFocused;
 	const isSyncScrollEnabledRef = useRef(isSyncScrollEnabled);
 	isSyncScrollEnabledRef.current = isSyncScrollEnabled;
+	const onCharCountRef = useRef(onCharCount);
+	onCharCountRef.current = onCharCount;
+
+	// Mark the editor dirty AND flip the save indicator to "saving" immediately on
+	// edit, so the indicator reflects unsaved changes instead of staying green.
+	const markDirty = useCallback(() => {
+		isDirtyRef.current = true;
+		setIsDirty(true);
+		useNoteStore.getState().setSaveStatus('saving');
+	}, []);
 
 	const schedulePreview = useCallback(
 		(doc: string) => {
@@ -512,11 +551,16 @@ function CodeMirrorEditor({
 					color: '#444444',
 					opacity: '0.8',
 				},
+				// Keep the active-line tint barely-there so it never competes with the
+				// selection highlight, which must clearly show what is selected.
 				'.cm-activeLine': {
-					backgroundColor: '#111111',
+					backgroundColor: 'rgba(255,255,255,0.035)',
 				},
-				'.cm-selectionBackground, ::selection': {
-					backgroundColor: '#333333 !important',
+				'.cm-selectionBackground, .cm-content ::selection, ::selection': {
+					backgroundColor: 'rgba(86,142,214,0.45) !important',
+				},
+				'&.cm-focused .cm-selectionBackground': {
+					backgroundColor: 'rgba(86,142,214,0.55) !important',
 				},
 			},
 			{ dark: true }
@@ -553,9 +597,11 @@ function CodeMirrorEditor({
 					: text.replace(/^(\s*)- \[[xX]\] /, '$1- [ ] ');
 				if (newLine === text) return;
 				view.dispatch({ changes: { from: line.from, to: line.to, insert: newLine } });
-				isDirtyRef.current = true;
-				setIsDirty(true);
+				markDirty();
 				schedulePreview(view.state.doc.toString());
+			}),
+			EditorView.updateListener.of((u) => {
+				if (u.docChanged) onCharCountRef.current(u.state.doc.length);
 			}),
 			keymap.of([
 				...historyKeymap,
@@ -578,8 +624,7 @@ function CodeMirrorEditor({
 				},
 			]),
 			...imeCompositionGuard((doc) => {
-				isDirtyRef.current = true;
-				setIsDirty(true);
+				markDirty();
 				schedulePreview(doc);
 			}),
 		];
@@ -600,6 +645,7 @@ function CodeMirrorEditor({
 		});
 
 		viewRef.current = view;
+		onCharCountRef.current(view.state.doc.length);
 
 		if (!restoreEditorSession(activeNodeId, view)) {
 			if (content === '') {

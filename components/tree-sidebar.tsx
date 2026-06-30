@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Plus, Search, Zap } from 'lucide-react';
+import { Plus, Search, Feather } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useNoteStore, type TreeNode, flattenVisible } from '@/lib/store';
 import { Button } from '@/components/ui/button';
@@ -250,12 +250,8 @@ export function TreeSidebar() {
 		<div className="h-full flex flex-col bg-sidebar">
 			<div className="p-3 border-b border-sidebar-border flex-shrink-0 space-y-2">
 				<div className="flex items-center gap-2">
-					<Button size="sm" variant="default" className="h-8 px-2.5 gap-1.5 shrink-0" onClick={() => quickCapture()} title="クイックキャプチャ (Ctrl+Shift+M)">
-						<Zap className="w-3.5 h-3.5" />
-						<span className="text-xs font-medium">一言</span>
-					</Button>
 					<div className="relative flex-1">
-						<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+						<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60 pointer-events-none" />
 						<Input
 							type="text"
 							placeholder="検索..."
@@ -267,16 +263,28 @@ export function TreeSidebar() {
 									setSearchQuery('');
 								}
 							}}
-							className="pl-8 h-8 text-sm bg-background/80 border-border/80"
+							className="pl-8 h-8 text-sm bg-background/60 border-border/60"
 						/>
 					</div>
-					<Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => (selectedNodeId ? createSibling(selectedNodeId) : createChild(null))} title="新規 (Ctrl+N)">
+					<Button
+						size="sm"
+						variant="ghost"
+						className="h-8 w-8 p-0 shrink-0 text-muted-foreground/70 hover:text-foreground"
+						onClick={() => quickCapture()}
+						title="一言メモ — 思いついたことをすぐ書く (Ctrl+Shift+M)"
+					>
+						<Feather className="w-4 h-4" />
+					</Button>
+					<Button
+						size="sm"
+						variant="ghost"
+						className="h-8 w-8 p-0 shrink-0 text-muted-foreground/70 hover:text-foreground"
+						onClick={() => (selectedNodeId ? createSibling(selectedNodeId) : createChild(null))}
+						title="新規ノート (Ctrl+N)"
+					>
 						<Plus className="w-4 h-4" />
 					</Button>
 				</div>
-				{sortMode === 'recent' && (
-					<p className="text-[10px] text-muted-foreground/60 px-0.5">新しい順 — 雑に積んでOK</p>
-				)}
 				{isShiftHeld && activeDragId && (
 					<p className="text-[10px] text-primary font-medium px-0.5 animate-pulse">↳ ここにドロップで子ノート化</p>
 				)}

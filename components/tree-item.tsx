@@ -142,11 +142,19 @@ export function TreeItem({
 			<div className={cn('flex items-center opacity-0 group-hover:opacity-100 transition-opacity ml-auto pl-2', isActive ? 'text-primary-foreground' : 'text-muted-foreground')}>
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
-						<button className="p-0.5 hover:bg-black/5 dark:hover:bg-white/10 rounded" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+						<button
+							className={cn(
+								'p-0.5 rounded cursor-pointer transition-colors',
+								isActive ? 'hover:bg-primary-foreground/25' : 'hover:bg-foreground/15',
+								'data-[state=open]:bg-foreground/15'
+							)}
+							onClick={(e) => e.stopPropagation()}
+							onPointerDown={(e) => e.stopPropagation()}
+						>
 							<MoreHorizontal className="w-3.5 h-3.5" />
 						</button>
 					</DropdownMenuTrigger>
-					<DropdownMenuContent align="start" alignOffset={-5} className="w-40">
+					<DropdownMenuContent align="start" alignOffset={-5} className="w-40" onCloseAutoFocus={(e) => e.preventDefault()}>
 						<DropdownMenuItem onClick={(e) => { e.stopPropagation(); onRename(node.id); }}>
 							<Edit2 className="w-3.5 h-3.5 mr-2" />名前を変更 <span className="ml-auto text-[10px] opacity-40">F2</span>
 						</DropdownMenuItem>
