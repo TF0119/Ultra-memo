@@ -149,6 +149,7 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 		const overId = String(over.id);
 
 		if (isShiftHeld) {
+			if (wouldNestCycle(treeNodes, activeId, overId)) return;
 			await nestNote(activeId, overId);
 			return;
 		}
@@ -442,4 +443,13 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 			/>
 		</div>
 	);
+}
+
+function wouldNestCycle(nodes: TreeNode[], movingId: string, targetParentId: string): boolean {
+	let current: TreeNode | undefined = nodes.find((n) => n.id === targetParentId);
+	while (current) {
+		if (current.id === movingId) return true;
+		current = current.parentId ? nodes.find((n) => n.id === current!.parentId) : undefined;
+	}
+	return false;
 }

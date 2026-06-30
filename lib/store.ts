@@ -471,9 +471,13 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 			set((state) => ({
 				treeNodes: state.treeNodes.map((node) => (node.id === id ? { ...node, title: newTitle, updatedAt: Date.now() } : node)),
 				editingNodeId: null,
-				// Titles changed — cached backlink snippets may reference old names.
 				backlinksByNoteId: {},
 			}));
+			const after = get();
+			for (const pane of [1, 2] as const) {
+				const activeId = after.activeNodeIds[pane];
+				if (activeId) void get().loadBacklinks(activeId);
+			}
 		} catch (error) {
 			console.error('Failed to rename note:', error);
 		}
