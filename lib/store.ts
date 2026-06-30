@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { isPlaceholderTitle } from './wiki-links';
 import { loadSortMode, saveSortMode, loadFollowActive, saveFollowActive, loadSyncScroll, saveSyncScroll, loadLineWrap, saveLineWrap, formatQuickCaptureTitle, loadExpandedNodes, saveExpandedNodes, loadSplitMode } from './preferences';
 import { clearEditorSession } from './editor-session';
+import { deriveTitleFromContent, invalidateBacklinksForWikiChanges } from './backlink-invalidation';
 
 export interface TreeNode {
 	id: string;
@@ -375,27 +376,32 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	},
 
 	updateNoteContent: async (id, content) => {
+		const stateBefore = get();
+		const oldContent = stateBefore.noteContents[id] ?? '';
+		const oldNode = stateBefore.treeNodes.find((n) => n.id === id);
+		const oldTitle = oldNode?.title ?? '無題';
 		try {
 			const updatedAt = await invoke<number>('update_note', { id, content });
+			const newTitle = deriveTitleFromContent(content, oldTitle);
 			set((state) => {
 				const preview = content.slice(0, 80);
-				const node = state.treeNodes.find((n) => n.id === id);
-				let title = node?.title ?? '無題';
-				if (node && isPlaceholderTitle(title)) {
-					const firstLine = content.split('\n').find((l) => l.trim());
-					if (firstLine) {
-						title = firstLine.trim().replace(/^#+\s*/, '').replace(/^- \[[ x]\]\s*/, '').slice(0, 40);
-					}
-				}
 				return {
 					noteContents: { ...state.noteContents, [id]: content },
 					contentSaveSeq: { ...state.contentSaveSeq, [id]: (state.contentSaveSeq[id] ?? 0) + 1 },
 					treeNodes: state.treeNodes.map((n) =>
-						n.id === id ? { ...n, title, contentPreview: preview, contentLength: content.length, updatedAt } : n
+						n.id === id ? { ...n, title: newTitle, contentPreview: preview, contentLength: content.length, updatedAt } : n
 					),
 				};
 			});
-			get().loadBacklinks(id);
+			await invalidateBacklinksForWikiChanges(
+				(title) => get().resolveWikiLink(title),
+				(noteId) => void get().loadBacklinks(noteId),
+				id,
+				oldContent,
+				content,
+				oldTitle,
+				newTitle
+			);
 		} catch (error) {
 			console.error('Failed to update note content:', error);
 			throw error;
@@ -481,17 +487,22 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	},
 
 	renameNote: async (id, newTitle) => {
+		const oldTitle = get().treeNodes.find((n) => n.id === id)?.title ?? '';
 		try {
 			await invoke('rename_note', { id, newTitle });
-			set((state) => ({
-				treeNodes: state.treeNodes.map((node) => (node.id === id ? { ...node, title: newTitle, updatedAt: Date.now() } : node)),
-				editingNodeId: null,
-				backlinksByNoteId: {},
-			}));
-			const after = get();
-			for (const pane of [1, 2] as const) {
-				const activeId = after.activeNodeIds[pane];
-				if (activeId) void get().loadBacklinks(activeId);
+			set((state) => {
+				const backlinksByNoteId = { ...state.backlinksByNoteId };
+				delete backlinksByNoteId[id];
+				return {
+					treeNodes: state.treeNodes.map((node) => (node.id === id ? { ...node, title: newTitle, updatedAt: Date.now() } : node)),
+					editingNodeId: null,
+					backlinksByNoteId,
+				};
+			});
+			void get().loadBacklinks(id);
+			if (oldTitle && oldTitle !== newTitle) {
+				const oldLinkedId = await get().resolveWikiLink(oldTitle);
+				if (oldLinkedId && oldLinkedId !== id) void get().loadBacklinks(oldLinkedId);
 			}
 		} catch (error) {
 			console.error('Failed to rename note:', error);
