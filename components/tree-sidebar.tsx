@@ -10,6 +10,7 @@ import { TreeItem } from './tree-item';
 import { MultiSelectBar } from './multi-select-bar';
 import { ConfirmDialog } from './confirm-dialog';
 import { formatRelativeTime } from '@/lib/preferences';
+import { getBreadcrumbPath, getParentPathLabel } from '@/lib/tree-path';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
@@ -73,11 +74,11 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 	}, []);
 
 	const displayedNodes = useMemo(() => {
-		const nodes: { node: TreeNode; depth: number }[] = [];
+		const nodes: { node: TreeNode; depth: number; parentPath?: string }[] = [];
 		if (debouncedSearchQuery) {
 			return treeNodes
 				.filter((n) => n.title.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) || n.contentPreview.toLowerCase().includes(debouncedSearchQuery.toLowerCase()))
-				.map((n) => ({ node: n, depth: 0 }));
+				.map((n) => ({ node: n, depth: 0, parentPath: getParentPathLabel(treeNodes, n.id) }));
 		}
 		const traverse = (parentId: string | null, depth: number) => {
 			let children = treeNodes.filter((n) => n.parentId === parentId);
@@ -197,10 +198,10 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 			} else if (e.key === 'F2') {
 				e.preventDefault();
 				setEditingNodeId(selectedNodeId);
-			} else if (e.key === 'ArrowRight' && selectedNode?.hasChildren) {
+			} else if (!debouncedSearchQuery && e.key === 'ArrowRight' && selectedNode?.hasChildren) {
 				e.preventDefault();
 				if (!expandedNodeIds.has(selectedNodeId)) toggleExpanded(selectedNodeId);
-			} else if (e.key === 'ArrowLeft') {
+			} else if (!debouncedSearchQuery && e.key === 'ArrowLeft') {
 				e.preventDefault();
 				if (selectedNode?.hasChildren && expandedNodeIds.has(selectedNodeId)) {
 					toggleExpanded(selectedNodeId);
@@ -209,7 +210,7 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 					const idx = displayedNodes.findIndex((n) => n.node.id === selectedNode.parentId);
 					if (idx !== -1) rowVirtualizer.scrollToIndex(idx, { align: 'auto' });
 				}
-			} else if (e.key === ' ' && selectedNode?.hasChildren) {
+			} else if (!debouncedSearchQuery && e.key === ' ' && selectedNode?.hasChildren) {
 				e.preventDefault();
 				toggleExpanded(selectedNodeId);
 			} else if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -258,6 +259,7 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 			focusedPane,
 			splitMode,
 			displayedNodes,
+			debouncedSearchQuery,
 			openNote,
 			selectNode,
 			triggerEditorFocus,
@@ -309,6 +311,23 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 						<Plus className="w-4 h-4" />
 					</Button>
 				</div>
+				{selectedNodeId && !debouncedSearchQuery && (
+					<div className="flex items-center gap-1 text-[10px] text-muted-foreground/60 px-0.5 truncate min-h-[14px]">
+						{getBreadcrumbPath(treeNodes, selectedNodeId).map((item, index) => (
+							<span key={item.id} className="flex items-center gap-1 min-w-0">
+								{index > 0 && <span className="opacity-40 shrink-0">/</span>}
+								<button
+									type="button"
+									title={item.title}
+									onClick={() => selectNode(item.id)}
+									className="truncate hover:text-foreground transition-colors max-w-[120px]"
+								>
+									{item.title || '無題'}
+								</button>
+							</span>
+						))}
+					</div>
+				)}
 				{isShiftHeld && activeDragId && !searchInput && (
 					<p className="text-[10px] text-primary font-medium px-0.5 animate-pulse">↳ ここにドロップで子ノート化</p>
 				)}
@@ -356,7 +375,7 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 						) : (
 							<div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
 								{rowVirtualizer.getVirtualItems().map((virtualRow) => {
-									const { node, depth } = displayedNodes[virtualRow.index];
+									const { node, depth, parentPath } = displayedNodes[virtualRow.index];
 									const isActiveInAnyPane = activeNodeIds[1] === node.id || activeNodeIds[2] === node.id;
 									return (
 										<div
@@ -373,6 +392,7 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 											<TreeItem
 												node={node}
 												depth={depth}
+												parentPath={parentPath}
 												isSelected={selectedNodeId === node.id}
 												isMultiSelected={selectedNodeIds.has(node.id) && selectedNodeIds.size > 1}
 												isActive={isActiveInAnyPane}

@@ -12,6 +12,7 @@ import { isPlaceholderTitle } from '@/lib/wiki-links';
 interface TreeItemProps {
 	node: TreeNode;
 	depth: number;
+	parentPath?: string;
 	isSelected: boolean;
 	isMultiSelected: boolean;
 	isActive: boolean;
@@ -35,6 +36,7 @@ interface TreeItemProps {
 export function TreeItem({
 	node,
 	depth,
+	parentPath,
 	isSelected,
 	isMultiSelected,
 	isActive,
@@ -163,9 +165,14 @@ export function TreeItem({
 					}}
 				/>
 			) : (
-				<span className={cn('flex-1 truncate text-[13px] font-normal tracking-tight leading-tight', isPlaceholderTitle(node.title) && !node.contentPreview && 'opacity-40 italic')}>
-					{displayTitle || '無題'}
-				</span>
+				<div className="flex-1 min-w-0 flex flex-col justify-center">
+					{parentPath && (
+						<span className="text-[9px] text-muted-foreground/45 truncate leading-none mb-0.5">{parentPath}</span>
+					)}
+					<span className={cn('truncate text-[13px] font-normal tracking-tight leading-tight', isPlaceholderTitle(node.title) && !node.contentPreview && 'opacity-40 italic')}>
+						{displayTitle || '無題'}
+					</span>
+				</div>
 			)}
 
 			<div className={cn('flex items-center transition-opacity ml-auto pl-2', menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100', isActive ? 'text-primary-foreground' : 'text-muted-foreground')}>
