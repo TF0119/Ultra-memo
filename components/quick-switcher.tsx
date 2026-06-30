@@ -18,6 +18,7 @@ export function QuickSwitcher({ isOpen, onClose }: QuickSwitcherProps) {
 	const { openNote, focusedPane, treeNodes, openNodeIds } = useNoteStore();
 	const inputRef = useRef<HTMLInputElement>(null);
 	const resultsRef = useRef<HTMLDivElement>(null);
+	const searchSeqRef = useRef(0);
 
 	// Recent notes when no query
 	const recentNotes = useMemo(() => {
@@ -35,12 +36,15 @@ export function QuickSwitcher({ isOpen, onClose }: QuickSwitcherProps) {
 			return;
 		}
 
+		const seq = ++searchSeqRef.current;
 		const timer = setTimeout(async () => {
 			try {
 				const searchResults = await invoke<any[]>('search_notes', { query, limit: 30 });
+				if (searchSeqRef.current !== seq) return;
 				setResults(searchResults);
 				setSelectedIndex(0);
 			} catch (error) {
+				if (searchSeqRef.current !== seq) return;
 				console.error('Search failed:', error);
 			}
 		}, 150);

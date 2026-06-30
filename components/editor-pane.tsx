@@ -79,11 +79,12 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 	const [copied, setCopied] = useState(false);
 	const handleCopyContent = useCallback(() => {
 		if (!activeNodeId) return;
-		const text = useNoteStore.getState().noteContents[activeNodeId] ?? content;
+		const live = useNoteStore.getState().editorGetDocByPane[paneId]?.();
+		const text = live ?? useNoteStore.getState().noteContents[activeNodeId] ?? content;
 		void navigator.clipboard.writeText(text);
 		setCopied(true);
 		setTimeout(() => setCopied(false), 1200);
-	}, [activeNodeId, content]);
+	}, [activeNodeId, content, paneId]);
 
 	const getBreadcrumb = (nodeId: string): { id: string; title: string }[] => {
 		const nodes = useNoteStore.getState().treeNodes;
@@ -387,12 +388,14 @@ function CodeMirrorEditor({
 						lastSavedContentRef.current = contentToSave;
 						markSaved();
 					})
-					.catch(() => {});
+					.catch(() => {
+						useNoteStore.getState().setSaveStatus(paneId, 'error');
+					});
 			} else {
 				markSaved();
 			}
 		}
-	}, [markSaved, activeNodeId]);
+	}, [markSaved, activeNodeId, paneId]);
 
 	// WYSIWYG Markdown decorations plugin
 	const wysiwygPlugin = useMemo(() => {
@@ -885,7 +888,11 @@ function CodeMirrorEditor({
 
 	useEffect(() => {
 		useNoteStore.getState().registerEditorFlush(paneId, flushSave);
-		return () => useNoteStore.getState().registerEditorFlush(paneId, null);
+		useNoteStore.getState().registerEditorGetDoc(paneId, () => viewRef.current?.state.doc.toString() ?? '');
+		return () => {
+			useNoteStore.getState().registerEditorFlush(paneId, null);
+			useNoteStore.getState().registerEditorGetDoc(paneId, null);
+		};
 	}, [paneId, flushSave]);
 
 	useEffect(() => {
@@ -909,7 +916,9 @@ function CodeMirrorEditor({
 							lastSavedContentRef.current = contentToSave;
 							markSaved();
 						})
-						.catch(() => {});
+						.catch(() => {
+							useNoteStore.getState().setSaveStatus(paneId, 'error');
+						});
 				} else {
 					lastSavedContentRef.current = contentToSave;
 					markSaved();
@@ -924,7 +933,13 @@ function CodeMirrorEditor({
 	// Flush on window blur / before close
 	useEffect(() => {
 		const onBlur = () => flushSave();
-		const onBeforeUnload = () => flushSave();
+		const onBeforeUnload = (e: BeforeUnloadEvent) => {
+			flushSave();
+			if (isDirtyRef.current) {
+				e.preventDefault();
+				e.returnValue = '';
+			}
+		};
 		window.addEventListener('blur', onBlur);
 		window.addEventListener('beforeunload', onBeforeUnload);
 		return () => {

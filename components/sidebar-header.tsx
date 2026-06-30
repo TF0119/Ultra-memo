@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useNoteStore } from '@/lib/store';
+import { useNoteStore, canNavigateHistory } from '@/lib/store';
 import { Button } from './ui/button';
 import { ChevronLeft, ChevronRight, Trash2, Columns2, Maximize2, Crosshair, Link2, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -13,12 +13,20 @@ interface SidebarHeaderProps {
 }
 
 export function SidebarHeader({ splitMode, setSplitMode }: SidebarHeaderProps) {
-	const { goBack, goForward, history, historyIndex, isFollowActiveEnabled, isSyncScrollEnabled, toggleFollowActive, toggleSyncScroll, exportMarkdownTree } =
-		useNoteStore();
+	const store = useNoteStore();
+	const { goBack, goForward, isFollowActiveEnabled, isSyncScrollEnabled, toggleFollowActive, toggleSyncScroll, exportMarkdownTree } =
+		store;
 	const [trashOpen, setTrashOpen] = useState(false);
 
-	const canGoBack = historyIndex > 0;
-	const canGoForward = historyIndex < history.length - 1;
+	const canGoBack = canNavigateHistory(store, 'back');
+	const canGoForward = canNavigateHistory(store, 'forward');
+
+	const toggleSplit = () => {
+		if (splitMode === 'split') {
+			useNoteStore.getState().flushEditorSave(2);
+		}
+		setSplitMode(splitMode === 'single' ? 'split' : 'single');
+	};
 
 	return (
 		<>
@@ -76,7 +84,7 @@ export function SidebarHeader({ splitMode, setSplitMode }: SidebarHeaderProps) {
 				<Button
 					size="sm"
 					variant="ghost"
-					onClick={() => setSplitMode(splitMode === 'single' ? 'split' : 'single')}
+					onClick={toggleSplit}
 					className="h-7 w-7 p-0 hover:bg-accent transition-colors shrink-0"
 					title={splitMode === 'single' ? '分割表示' : '単一表示'}
 				>

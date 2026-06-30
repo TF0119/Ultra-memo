@@ -23,7 +23,7 @@ export function TrashModal({ open, onOpenChange }: TrashModalProps) {
 	const [deletedNotes, setDeletedNotes] = useState<DeletedNote[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [hardDeleteTarget, setHardDeleteTarget] = useState<DeletedNote | null>(null);
-	const { refreshTree } = useNoteStore();
+	const { refreshTree, purgeNotesFromFrontend } = useNoteStore();
 
 	const loadDeletedNotes = async () => {
 		setLoading(true);
@@ -57,6 +57,8 @@ export function TrashModal({ open, onOpenChange }: TrashModalProps) {
 		try {
 			await invoke('hard_delete_note', { id });
 			setDeletedNotes((prev) => prev.filter((n) => n.id !== id));
+			purgeNotesFromFrontend([id]);
+			await refreshTree();
 		} catch (error) {
 			console.error('Failed to hard delete note:', error);
 		}

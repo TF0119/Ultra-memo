@@ -15,6 +15,14 @@ export function markdownAutoBullet() {
 			return true;
 		}
 
+		if (before === '-[' || before === '- [') {
+			view.dispatch({
+				changes: { from: line.from, to: from + 1, insert: '- [ ] ' },
+				selection: { anchor: line.from + 6 },
+			});
+			return true;
+		}
+
 		if (before === '>') {
 			view.dispatch({
 				changes: { from: line.from, to: from + 1, insert: '> ' },

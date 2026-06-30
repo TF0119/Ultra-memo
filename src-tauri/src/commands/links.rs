@@ -10,6 +10,15 @@ pub struct BacklinkNote {
     pub snippet: String,
 }
 
+fn escape_like(s: &str) -> String {
+    s.chars()
+        .flat_map(|c| match c {
+            '%' | '_' | '\\' | '[' => vec!['\\', c],
+            c => vec![c],
+        })
+        .collect()
+}
+
 #[tauri::command]
 pub fn resolve_wiki_link(state: State<'_, AppState>, title: String) -> Result<Option<String>, String> {
     let conn = state.db.lock().map_err(|_| "Failed to lock database")?;
@@ -39,11 +48,11 @@ pub fn get_backlinks(state: State<'_, AppState>, note_id: String) -> Result<Vec<
         )
         .map_err(|e| e.to_string())?;
 
-    let pattern = format!("%[[{}]]%", title);
+    let pattern = format!("%[[{}]]%", escape_like(&title));
     let mut stmt = conn
         .prepare(
             "SELECT id, title, content FROM notes
-             WHERE is_deleted = 0 AND id != ?1 AND content LIKE ?2
+             WHERE is_deleted = 0 AND id != ?1 AND content LIKE ?2 ESCAPE '\\'
              ORDER BY updated_at DESC LIMIT 30",
         )
         .map_err(|e| e.to_string())?;

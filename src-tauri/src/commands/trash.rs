@@ -41,12 +41,39 @@ pub fn get_deleted_notes(state: State<'_, AppState>) -> Result<Vec<DeletedNote>,
 pub fn restore_note(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let conn = state.db.lock().map_err(|_| "Failed to lock database")?;
     let id_int = id.parse::<i64>().map_err(|_| "Invalid Note ID")?;
-    
+
+    // If the parent was deleted, reparent to root so the note is visible again.
+    let parent_id: Option<i64> = conn
+        .query_row(
+            "SELECT parent_id FROM notes WHERE id = ?",
+            [id_int],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    if let Some(pid) = parent_id {
+        let parent_alive: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM notes WHERE id = ? AND is_deleted = 0",
+                [pid],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|n: i64| n > 0)
+            .unwrap_or(false);
+        if !parent_alive {
+            conn.execute(
+                "UPDATE notes SET parent_id = NULL WHERE id = ?",
+                params![id_int],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    }
+
     conn.execute(
         "UPDATE notes SET is_deleted = 0 WHERE id = ?",
         params![id_int]
     ).map_err(|e| e.to_string())?;
-    
+
     Ok(())
 }
 
@@ -77,6 +104,10 @@ pub fn hard_delete_note(state: State<'_, AppState>, id: String) -> Result<(), St
     
     // Delete all collected notes
     for delete_id in ids_to_delete {
+        conn.execute(
+            "DELETE FROM open_state WHERE note_id = ?",
+            params![delete_id],
+        ).map_err(|e| e.to_string())?;
         conn.execute(
             "DELETE FROM notes WHERE id = ?",
             params![delete_id]

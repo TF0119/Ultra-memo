@@ -1,6 +1,7 @@
 import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, WidgetType } from '@codemirror/view';
 import { RangeSetBuilder, EditorState, Compartment } from '@codemirror/state';
 import { autocompletion, CompletionContext } from '@codemirror/autocomplete';
+import { isPlaceholderTitle } from './wiki-links';
 
 class WikiLinkWidget extends WidgetType {
 	constructor(
@@ -72,6 +73,7 @@ export function wikiLinkAutocomplete(getTitles: () => string[]) {
 				if (!before) return null;
 				const query = before.text.slice(2).toLowerCase();
 				const titles = getTitles()
+					.filter((t) => !isPlaceholderTitle(t))
 					.filter((t) => t.toLowerCase().includes(query))
 					.sort((a, b) => {
 						const al = a.toLowerCase();

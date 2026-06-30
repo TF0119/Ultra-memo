@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNoteStore } from '@/lib/store';
 import { Link2, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -14,6 +14,10 @@ export function BacklinksPanel({ paneId }: BacklinksPanelProps) {
 	const [expanded, setExpanded] = useState(false);
 	const activeId = activeNodeIds[paneId];
 	const backlinks = activeId ? (backlinksByNoteId[activeId] ?? []) : [];
+
+	useEffect(() => {
+		setExpanded(false);
+	}, [activeId]);
 
 	if (!activeId || backlinks.length === 0) return null;
 

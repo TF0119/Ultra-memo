@@ -56,7 +56,10 @@ pub fn get_open_list(state: State<'_, AppState>, limit: i64) -> Result<Vec<Strin
     let conn = state.db.lock().map_err(|_| "Failed to lock database")?;
     
     let mut stmt = conn.prepare(
-        "SELECT note_id FROM open_state ORDER BY last_opened_at DESC LIMIT ?"
+        "SELECT os.note_id FROM open_state os
+         INNER JOIN notes n ON n.id = os.note_id
+         WHERE n.is_deleted = 0
+         ORDER BY os.last_opened_at DESC LIMIT ?"
     ).map_err(|e| e.to_string())?;
     
     let ids = stmt.query_map([limit], |row| {

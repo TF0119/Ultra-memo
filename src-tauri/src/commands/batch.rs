@@ -16,6 +16,14 @@ pub fn batch_soft_delete(state: State<'_, AppState>, ids: Vec<String>) -> Result
                 "UPDATE notes SET is_deleted = 1, updated_at = ? WHERE id = ?",
                 params![now, id_int],
             );
+            let _ = conn.execute(
+                "DELETE FROM open_state WHERE note_id = ?",
+                params![id_int],
+            );
+            let _ = conn.execute(
+                "UPDATE notes SET is_open = 0 WHERE id = ?",
+                params![id_int],
+            );
         }
     }
     Ok(())

@@ -55,6 +55,7 @@ interface NoteStore {
 	backlinksLoadSeq: number;
 	contentSaveSeq: Record<string, number>;
 	editorFlushByPane: { 1: (() => void) | null; 2: (() => void) | null };
+	editorGetDocByPane: { 1: (() => string) | null; 2: (() => string) | null };
 	failedNoteIds: Set<string>;
 
 	initialize: () => Promise<void>;
@@ -99,7 +100,9 @@ interface NoteStore {
 	goForward: () => void;
 	setSaveStatus: (paneId: 1 | 2, status: 'saved' | 'saving' | 'error') => void;
 	registerEditorFlush: (paneId: 1 | 2, fn: (() => void) | null) => void;
+	registerEditorGetDoc: (paneId: 1 | 2, fn: (() => string) | null) => void;
 	flushEditorSave: (paneId?: 1 | 2) => void;
+	purgeNotesFromFrontend: (ids: string[]) => void;
 }
 
 function mapTreeNode(raw: Record<string, unknown>): TreeNode {
@@ -149,6 +152,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	backlinksLoadSeq: 0,
 	contentSaveSeq: {},
 	editorFlushByPane: { 1: null, 2: null },
+	editorGetDocByPane: { 1: null, 2: null },
 	failedNoteIds: new Set(),
 
 	initialize: async () => {
@@ -178,6 +182,13 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 					// failedNoteIds tracks load failure for UI retry
 				}
 			}
+			// Drop expand state for notes that no longer exist.
+			set((s) => {
+				const liveIds = new Set(nodes.map((n) => n.id));
+				const pruned = new Set([...s.expandedNodeIds].filter((id) => liveIds.has(id)));
+				if (pruned.size !== s.expandedNodeIds.size) saveExpandedNodes(pruned);
+				return { expandedNodeIds: pruned };
+			});
 		} catch (error) {
 			console.error('Failed to initialize store:', error);
 			set({ initError: 'ノートの読み込みに失敗しました', isInitialized: false });
@@ -265,6 +276,12 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 
 	openNote: async (id, paneId, shouldFocusEditor = true, skipHistory = false) => {
 		const prior = get();
+		const otherPane = paneId === 1 ? 2 : 1;
+		// Same note already open in the other pane — focus that pane instead of duplicating editors.
+		if (prior.activeNodeIds[otherPane] === id && prior.activeNodeIds[paneId] !== id) {
+			return get().openNote(id, otherPane, shouldFocusEditor, skipHistory);
+		}
+
 		const alreadyOpen =
 			prior.activeNodeIds[paneId] === id && prior.noteContents[id] !== undefined && !prior.failedNoteIds.has(id);
 
@@ -454,6 +471,8 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 			set((state) => ({
 				treeNodes: state.treeNodes.map((node) => (node.id === id ? { ...node, title: newTitle, updatedAt: Date.now() } : node)),
 				editingNodeId: null,
+				// Titles changed — cached backlink snippets may reference old names.
+				backlinksByNoteId: {},
 			}));
 		} catch (error) {
 			console.error('Failed to rename note:', error);
@@ -474,6 +493,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 					selectedNodeId: next.size ? [...next][0] : null,
 				};
 			});
+			await openFallbackAfterDelete(get(), [id]);
 		} catch (error) {
 			console.error('Failed to delete note:', error);
 		}
@@ -491,6 +511,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 				selectedNodeIds: new Set(),
 				selectedNodeId: null,
 			}));
+			await openFallbackAfterDelete(get(), ids);
 		} catch (error) {
 			console.error('Failed to batch delete:', error);
 		}
@@ -738,6 +759,12 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 		}));
 	},
 
+	registerEditorGetDoc: (paneId, fn) => {
+		set((state) => ({
+			editorGetDocByPane: { ...state.editorGetDocByPane, [paneId]: fn },
+		}));
+	},
+
 	flushEditorSave: (paneId) => {
 		const { editorFlushByPane } = get();
 		if (paneId) {
@@ -746,6 +773,10 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 		}
 		editorFlushByPane[1]?.();
 		editorFlushByPane[2]?.();
+	},
+
+	purgeNotesFromFrontend: (ids) => {
+		set((s) => purgeNotesFromState(s, ids));
 	},
 }));
 
@@ -830,4 +861,32 @@ function optimisticMove(state: NoteStore, noteId: string, newParentId: string | 
 	return { treeNodes: nodes };
 }
 
-export { flattenVisible };
+export { flattenVisible, canNavigateHistory };
+
+async function openFallbackAfterDelete(state: NoteStore, deletedIds: string[]) {
+	const idSet = new Set(deletedIds);
+	const { activeNodeIds, focusedPane } = state;
+	if (activeNodeIds[focusedPane]) return;
+	const fallback = findFallbackNoteId(state, idSet);
+	if (fallback) await useNoteStore.getState().openNote(fallback, focusedPane, false);
+}
+
+function findFallbackNoteId(state: NoteStore, exclude: Set<string>): string | null {
+	const flat = flattenVisible(state.treeNodes, state.expandedNodeIds, state.sortMode);
+	return flat.find((id) => !exclude.has(id)) ?? null;
+}
+
+export function canNavigateHistory(state: Pick<NoteStore, 'history' | 'historyIndex' | 'treeNodes'>, direction: 'back' | 'forward'): boolean {
+	const liveIds = new Set(state.treeNodes.map((n) => n.id));
+	const { history, historyIndex } = state;
+	if (direction === 'back') {
+		for (let idx = historyIndex - 1; idx >= 0; idx--) {
+			if (liveIds.has(history[idx])) return true;
+		}
+		return false;
+	}
+	for (let idx = historyIndex + 1; idx < history.length; idx++) {
+		if (liveIds.has(history[idx])) return true;
+	}
+	return false;
+}

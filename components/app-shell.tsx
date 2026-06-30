@@ -37,6 +37,7 @@ export function AppShell() {
 		goBack,
 		goForward,
 		setFocusedPane,
+		triggerEditorFocus,
 	} = useNoteStore();
 
 	const modalOpen = isQuickSwitcherOpen || isCommandPaletteOpen;
@@ -136,6 +137,7 @@ export function AppShell() {
 			if (e.key === 'Enter' && !e.repeat && !e.ctrlKey && selectedNodeId && !inEditor && !inInput && !inTree && !modalOpen) {
 				e.preventDefault();
 				openNote(selectedNodeId, focusedPane);
+				triggerEditorFocus();
 			}
 
 			if (e.ctrlKey && e.key === 'Enter' && !e.repeat && selectedNodeId && !inEditor && !inInput && !modalOpen) {
@@ -167,6 +169,7 @@ export function AppShell() {
 		goBack,
 		goForward,
 		setFocusedPane,
+		triggerEditorFocus,
 	]);
 
 	const handleResize = useCallback((e: MouseEvent) => {

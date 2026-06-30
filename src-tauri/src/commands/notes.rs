@@ -215,6 +215,15 @@ pub fn soft_delete_note(state: State<'_, AppState>, id: String) -> Result<(), St
         params![now, id_int],
     ).map_err(|e| e.to_string())?;
 
+    conn.execute(
+        "DELETE FROM open_state WHERE note_id = ?",
+        params![id_int],
+    ).map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE notes SET is_open = 0 WHERE id = ?",
+        params![id_int],
+    ).map_err(|e| e.to_string())?;
+
     Ok(())
 }
 

@@ -30,6 +30,13 @@ export function imeCompositionGuard(
 				onCompositionEnd?.();
 				return false;
 			},
+			compositioncancel: () => {
+				composing = false;
+				if (isComposingRef) isComposingRef.current = false;
+				flush();
+				onCompositionEnd?.();
+				return false;
+			},
 		}),
 		EditorView.updateListener.of((update) => {
 			if (!update.docChanged) return;

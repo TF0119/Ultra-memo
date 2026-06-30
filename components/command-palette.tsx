@@ -68,12 +68,14 @@ export function CommandPalette({ isOpen, onClose, onOpenSearch, splitMode, setSp
 				action: () => {
 					const pane = store.focusedPane;
 					const activeId = store.activeNodeIds[pane];
-					if (activeId) {
-						store.flushEditorSave(pane);
-						const existing = store.noteContents[activeId] ?? '';
-						const content = existing.trim() ? `${existing}\n\n${applyTemplate(t)}` : applyTemplate(t);
-						void store.updateNoteContent(activeId, content);
+					if (!activeId) {
+						window.alert('ノートを開いてから実行してください');
+						return;
 					}
+					store.flushEditorSave(pane);
+					const existing = store.noteContents[activeId] ?? '';
+					const content = existing.trim() ? `${existing}\n\n${applyTemplate(t)}` : applyTemplate(t);
+					void store.updateNoteContent(activeId, content);
 				},
 			})),
 		],
