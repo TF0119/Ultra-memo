@@ -109,6 +109,9 @@ export function TreeItem({
 			onClick={(e) => {
 				onSelect(node.id, e);
 				(e.currentTarget as HTMLElement).focus();
+				// Single click opens the note (browse). Modifier-clicks are multi-select
+				// only; double-click additionally jumps focus into the editor.
+				if (!e.ctrlKey && !e.metaKey && !e.shiftKey) onOpenNote(node.id);
 			}}
 			onDoubleClick={(e) => {
 				e.preventDefault();

@@ -199,8 +199,14 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 						<span className="text-xs opacity-50">読み込み中...</span>
 					</div>
 				) : activeNode ? (
-					<CodeMirrorEditor
+					<motion.div
 						key={activeNode.id}
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						transition={{ duration: 0.15, ease: 'easeOut' }}
+						className="h-full"
+					>
+					<CodeMirrorEditor
 						activeNodeId={activeNode.id}
 						paneId={paneId}
 						content={content}
@@ -222,6 +228,7 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 						onFocus={() => setFocusedPane(paneId)}
 						isFocused={isFocused}
 					/>
+					</motion.div>
 				) : (
 					<div className="h-full flex items-center justify-center text-muted-foreground bg-card/10">
 						<div className="text-center space-y-4 px-8">

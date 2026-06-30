@@ -107,7 +107,9 @@ export function TreeSidebar() {
 	useEffect(() => {
 		if (!isFollowActiveEnabled || isManualScrolling || !activeNodeId) return;
 		const index = displayedNodes.findIndex((n) => n.node.id === activeNodeId);
-		if (index !== -1) rowVirtualizer.scrollToIndex(index, { align: 'center' });
+		// 'auto' keeps the active note in view without re-centering (and jumping) on
+		// every single-click open; it only scrolls when the note is off-screen.
+		if (index !== -1) rowVirtualizer.scrollToIndex(index, { align: 'auto' });
 	}, [activeNodeId, isFollowActiveEnabled, displayedNodes, isManualScrolling, rowVirtualizer]);
 
 	const handleManualScroll = useCallback(() => {
