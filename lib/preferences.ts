@@ -6,6 +6,7 @@ const KEYS = {
 	splitPosition: 'ultra-memo:splitPosition',
 	splitMode: 'ultra-memo:splitMode',
 	expandedNodes: 'ultra-memo:expandedNodes',
+	lineWrap: 'ultra-memo:lineWrap',
 } as const;
 
 export type SortMode = 'manual' | 'recent';
@@ -36,6 +37,15 @@ export function loadSyncScroll(): boolean {
 
 export function saveSyncScroll(enabled: boolean) {
 	localStorage.setItem(KEYS.syncScroll, String(enabled));
+}
+
+export function loadLineWrap(): boolean {
+	if (typeof window === 'undefined') return false;
+	return localStorage.getItem(KEYS.lineWrap) === 'true';
+}
+
+export function saveLineWrap(enabled: boolean) {
+	localStorage.setItem(KEYS.lineWrap, String(enabled));
 }
 
 export function loadSidebarWidth(): number {

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useNoteStore } from '@/lib/store';
 import { Button } from './ui/button';
-import { ChevronLeft, ChevronRight, Trash2, Columns2, Maximize2, Crosshair, Link2, Download } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2, Columns2, Maximize2, Crosshair, Link2, Download, WrapText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TrashModal } from './trash-modal';
 
@@ -13,7 +13,7 @@ interface SidebarHeaderProps {
 }
 
 export function SidebarHeader({ splitMode, setSplitMode }: SidebarHeaderProps) {
-	const { goBack, goForward, history, historyIndex, isFollowActiveEnabled, isSyncScrollEnabled, toggleFollowActive, toggleSyncScroll, exportMarkdownTree } =
+	const { goBack, goForward, history, historyIndex, isFollowActiveEnabled, isSyncScrollEnabled, isLineWrapEnabled, toggleFollowActive, toggleSyncScroll, toggleLineWrap, exportMarkdownTree } =
 		useNoteStore();
 	const [trashOpen, setTrashOpen] = useState(false);
 
@@ -66,6 +66,16 @@ export function SidebarHeader({ splitMode, setSplitMode }: SidebarHeaderProps) {
 						disabled={splitMode !== 'split'}
 					>
 						<Link2 className="w-3.5 h-3.5" />
+					</Button>
+
+					<Button
+						variant="ghost"
+						size="sm"
+						className={cn('h-7 w-7 p-0 transition-colors', isLineWrapEnabled ? 'text-primary bg-primary/10' : 'hover:bg-accent/80')}
+						title={isLineWrapEnabled ? '折り返し: ON' : '折り返し: OFF'}
+						onClick={toggleLineWrap}
+					>
+						<WrapText className="w-3.5 h-3.5" />
 					</Button>
 
 					<Button variant="ghost" size="sm" className="h-7 w-7 p-0 hover:bg-accent/80" title="Markdownエクスポート" onClick={() => exportMarkdownTree()}>

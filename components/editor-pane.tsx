@@ -34,7 +34,7 @@ import {
 	ViewUpdate,
 	WidgetType,
 } from '@codemirror/view';
-import { EditorState, RangeSetBuilder, StateField, type Text } from '@codemirror/state';
+import { EditorState, RangeSetBuilder, StateField, Compartment, type Text } from '@codemirror/state';
 import { indentWithTab, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { bracketMatching, indentOnInput } from '@codemirror/language';
@@ -284,7 +284,11 @@ function CodeMirrorEditor({
 	getNoteTitles: () => string[];
 	isZenMode: boolean;
 }) {
-	const { focusTarget, contentSaveSeq } = useNoteStore();
+	const { focusTarget, contentSaveSeq, isLineWrapEnabled } = useNoteStore();
+	const lineWrapCompartmentRef = useRef<Compartment | null>(null);
+	if (!lineWrapCompartmentRef.current) lineWrapCompartmentRef.current = new Compartment();
+	const isLineWrapEnabledRef = useRef(isLineWrapEnabled);
+	isLineWrapEnabledRef.current = isLineWrapEnabled;
 	const savedContentSeq = contentSaveSeq[activeNodeId] ?? 0;
 	const consumedTriggerRef = useRef(focusTarget.trigger);
 	const editorRef = useRef<HTMLDivElement>(null);
@@ -658,6 +662,7 @@ function CodeMirrorEditor({
 		);
 
 		const extensions = [
+			lineWrapCompartmentRef.current.of(isLineWrapEnabledRef.current ? EditorView.lineWrapping : []),
 			history(),
 			drawSelection(),
 			dropCursor(),
@@ -782,6 +787,15 @@ function CodeMirrorEditor({
 			isSyncingRef.current = false;
 		});
 	}, [syncScrollRatio, syncScrollSource, isSyncScrollEnabled, paneId]);
+
+	// Toggle soft line-wrap live, without recreating the editor (keeps cursor/scroll).
+	useEffect(() => {
+		const view = viewRef.current;
+		const compartment = lineWrapCompartmentRef.current;
+		if (view && compartment) {
+			view.dispatch({ effects: compartment.reconfigure(isLineWrapEnabled ? EditorView.lineWrapping : []) });
+		}
+	}, [isLineWrapEnabled]);
 
 	// Focus editor when triggered; only jump to end for empty notes
 	useEffect(() => {

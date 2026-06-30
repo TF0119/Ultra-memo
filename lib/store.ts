@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { isPlaceholderTitle } from './wiki-links';
-import { loadSortMode, saveSortMode, loadFollowActive, saveFollowActive, loadSyncScroll, saveSyncScroll, formatQuickCaptureTitle, loadExpandedNodes, saveExpandedNodes } from './preferences';
+import { loadSortMode, saveSortMode, loadFollowActive, saveFollowActive, loadSyncScroll, saveSyncScroll, loadLineWrap, saveLineWrap, formatQuickCaptureTitle, loadExpandedNodes, saveExpandedNodes } from './preferences';
 import { clearEditorSession } from './editor-session';
 
 export interface TreeNode {
@@ -39,6 +39,7 @@ interface NoteStore {
 	openNodeIds: Set<string>;
 	isFollowActiveEnabled: boolean;
 	isSyncScrollEnabled: boolean;
+	isLineWrapEnabled: boolean;
 	syncScrollRatio: number;
 	syncScrollSource: 1 | 2 | null;
 	isZenMode: boolean;
@@ -81,6 +82,7 @@ interface NoteStore {
 	triggerEditorFocus: () => void;
 	toggleFollowActive: () => void;
 	toggleSyncScroll: () => void;
+	toggleLineWrap: () => void;
 	toggleZenMode: () => void;
 	toggleSortMode: () => void;
 	setCommandPaletteOpen: (open: boolean) => void;
@@ -129,6 +131,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	openNodeIds: new Set(),
 	isFollowActiveEnabled: loadFollowActive(),
 	isSyncScrollEnabled: loadSyncScroll(),
+	isLineWrapEnabled: loadLineWrap(),
 	syncScrollRatio: 0,
 	syncScrollSource: null,
 	isZenMode: false,
@@ -579,6 +582,12 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 			const next = !s.isSyncScrollEnabled;
 			saveSyncScroll(next);
 			return { isSyncScrollEnabled: next };
+		}),
+	toggleLineWrap: () =>
+		set((s) => {
+			const next = !s.isLineWrapEnabled;
+			saveLineWrap(next);
+			return { isLineWrapEnabled: next };
 		}),
 	toggleZenMode: () => set((s) => ({ isZenMode: !s.isZenMode })),
 	toggleSortMode: () =>
