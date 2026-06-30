@@ -46,18 +46,20 @@ interface NoteStore {
 	isCommandPaletteOpen: boolean;
 	sortMode: 'manual' | 'recent';
 	isInitialized: boolean;
+	initError: string | null;
 	focusTarget: { nodeId: string | null; paneId: 1 | 2; trigger: number };
 	history: string[];
 	historyIndex: number;
-	saveStatus: 'saved' | 'saving' | 'error';
-	backlinks: BacklinkNote[];
+	saveStatusByPane: { 1: 'saved' | 'saving' | 'error'; 2: 'saved' | 'saving' | 'error' };
+	backlinksByNoteId: Record<string, BacklinkNote[]>;
+	backlinksLoadSeq: number;
 	contentSaveSeq: Record<string, number>;
 	editorFlushByPane: { 1: (() => void) | null; 2: (() => void) | null };
 	failedNoteIds: Set<string>;
 
 	initialize: () => Promise<void>;
 	refreshTree: () => Promise<void>;
-	selectNode: (id: string, opts?: { additive?: boolean; range?: boolean }) => void;
+	selectNode: (id: string, opts?: { additive?: boolean; range?: boolean; visibleFlat?: string[] }) => void;
 	clearSelection: () => void;
 	setEditingNodeId: (id: string | null) => void;
 	loadNoteContent: (id: string) => Promise<string>;
@@ -95,7 +97,7 @@ interface NoteStore {
 	loadBacklinks: (id: string) => Promise<void>;
 	goBack: () => void;
 	goForward: () => void;
-	setSaveStatus: (status: 'saved' | 'saving' | 'error') => void;
+	setSaveStatus: (paneId: 1 | 2, status: 'saved' | 'saving' | 'error') => void;
 	registerEditorFlush: (paneId: 1 | 2, fn: (() => void) | null) => void;
 	flushEditorSave: (paneId?: 1 | 2) => void;
 }
@@ -138,16 +140,19 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	isCommandPaletteOpen: false,
 	sortMode: loadSortMode(),
 	isInitialized: false,
+	initError: null,
 	focusTarget: { nodeId: null, paneId: 1, trigger: 0 },
 	history: [],
 	historyIndex: -1,
-	saveStatus: 'saved',
-	backlinks: [],
+	saveStatusByPane: { 1: 'saved', 2: 'saved' },
+	backlinksByNoteId: {},
+	backlinksLoadSeq: 0,
 	contentSaveSeq: {},
 	editorFlushByPane: { 1: null, 2: null },
 	failedNoteIds: new Set(),
 
 	initialize: async () => {
+		set({ initError: null });
 		try {
 			const nodes = (await invoke<Record<string, unknown>[]>('get_tree_snapshot')).map(mapTreeNode);
 			const openNodes = await invoke<string[]>('get_open_list', { limit: 50 });
@@ -155,6 +160,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 				treeNodes: nodes,
 				openNodeIds: new Set(openNodes),
 				isInitialized: true,
+				initError: null,
 			};
 			if (openNodes.length > 0 && !get().activeNodeIds[1]) {
 				const firstNoteId = openNodes[0];
@@ -174,6 +180,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 			}
 		} catch (error) {
 			console.error('Failed to initialize store:', error);
+			set({ initError: 'ノートの読み込みに失敗しました', isInitialized: false });
 		}
 	},
 
@@ -191,7 +198,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 				return { selectedNodeIds: next, selectedNodeId: id, lastSelectedId: id };
 			}
 			if (opts?.range && state.lastSelectedId) {
-				const flat = flattenVisible(state.treeNodes, state.expandedNodeIds, state.sortMode);
+				const flat = opts.visibleFlat ?? flattenVisible(state.treeNodes, state.expandedNodeIds, state.sortMode);
 				const a = flat.indexOf(state.lastSelectedId);
 				const b = flat.indexOf(id);
 				if (a !== -1 && b !== -1) {
@@ -349,7 +356,6 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 					}
 				}
 				return {
-					saveStatus: 'saved',
 					noteContents: { ...state.noteContents, [id]: content },
 					contentSaveSeq: { ...state.contentSaveSeq, [id]: (state.contentSaveSeq[id] ?? 0) + 1 },
 					treeNodes: state.treeNodes.map((n) =>
@@ -360,7 +366,6 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 			get().loadBacklinks(id);
 		} catch (error) {
 			console.error('Failed to update note content:', error);
-			set({ saveStatus: 'error' });
 			throw error;
 		}
 	},
@@ -368,7 +373,11 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	patchLocalContent: (id, content) => {
 		set((state) => {
 			const preview = content.slice(0, 80);
-			// Live preview only — title auto-renames on save to avoid jitter while typing
+			const node = state.treeNodes.find((n) => n.id === id);
+			// Skip tree rebuild when preview unchanged — keeps the virtualized tree stable while typing.
+			if (node && node.contentPreview === preview && node.contentLength === content.length) {
+				return { noteContents: { ...state.noteContents, [id]: content } };
+			}
 			return {
 				noteContents: { ...state.noteContents, [id]: content },
 				treeNodes: state.treeNodes.map((n) =>
@@ -453,6 +462,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 
 	deleteNote: async (id) => {
 		try {
+			get().flushEditorSave();
 			await invoke('soft_delete_note', { id });
 			await get().refreshTree();
 			set((s) => {
@@ -472,8 +482,8 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	batchDelete: async () => {
 		const ids = [...get().selectedNodeIds];
 		if (!ids.length) return;
-		if (!confirm(`${ids.length}件のノートを削除しますか？`)) return;
 		try {
+			get().flushEditorSave();
 			await invoke('batch_soft_delete', { ids });
 			await get().refreshTree();
 			set((s) => ({
@@ -570,10 +580,13 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	},
 
 	setFocusedPane: (paneId) => {
-		set((state) => ({
-			focusedPane: paneId,
-			focusTarget: { nodeId: state.activeNodeIds[paneId], paneId, trigger: state.focusTarget.trigger + 1 },
-		}));
+		set((state) => {
+			if (state.focusedPane === paneId) return state;
+			return {
+				focusedPane: paneId,
+				focusTarget: { nodeId: state.activeNodeIds[paneId], paneId, trigger: state.focusTarget.trigger + 1 },
+			};
+		});
 	},
 
 	triggerEditorFocus: () => {
@@ -658,11 +671,19 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	},
 
 	loadBacklinks: async (id) => {
+		const seq = get().backlinksLoadSeq + 1;
+		set({ backlinksLoadSeq: seq });
 		try {
 			const backlinks = await invoke<BacklinkNote[]>('get_backlinks', { noteId: id });
-			set({ backlinks });
+			if (get().backlinksLoadSeq !== seq) return;
+			set((state) => ({
+				backlinksByNoteId: { ...state.backlinksByNoteId, [id]: backlinks },
+			}));
 		} catch {
-			set({ backlinks: [] });
+			if (get().backlinksLoadSeq !== seq) return;
+			set((state) => ({
+				backlinksByNoteId: { ...state.backlinksByNoteId, [id]: [] },
+			}));
 		}
 	},
 
@@ -684,23 +705,32 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 
 	goBack: () => {
 		const state = get();
-		if (state.historyIndex > 0) {
-			const prevId = state.history[state.historyIndex - 1];
-			set({ historyIndex: state.historyIndex - 1 });
-			get().openNote(prevId, state.focusedPane, false, true);
+		const liveIds = new Set(state.treeNodes.map((n) => n.id));
+		for (let idx = state.historyIndex - 1; idx >= 0; idx--) {
+			const id = state.history[idx];
+			if (!liveIds.has(id)) continue;
+			set({ historyIndex: idx });
+			void get().openNote(id, state.focusedPane, false, true);
+			return;
 		}
 	},
 
 	goForward: () => {
 		const state = get();
-		if (state.historyIndex < state.history.length - 1) {
-			const nextId = state.history[state.historyIndex + 1];
-			set({ historyIndex: state.historyIndex + 1 });
-			get().openNote(nextId, state.focusedPane, false, true);
+		const liveIds = new Set(state.treeNodes.map((n) => n.id));
+		for (let idx = state.historyIndex + 1; idx < state.history.length; idx++) {
+			const id = state.history[idx];
+			if (!liveIds.has(id)) continue;
+			set({ historyIndex: idx });
+			void get().openNote(id, state.focusedPane, false, true);
+			return;
 		}
 	},
 
-	setSaveStatus: (status) => set({ saveStatus: status }),
+	setSaveStatus: (paneId, status) =>
+		set((state) => ({
+			saveStatusByPane: { ...state.saveStatusByPane, [paneId]: status },
+		})),
 
 	registerEditorFlush: (paneId, fn) => {
 		set((state) => ({
@@ -723,10 +753,12 @@ function purgeNotesFromState(state: NoteStore, ids: string[]) {
 	const idSet = new Set(ids);
 	const noteContents = { ...state.noteContents };
 	const contentSaveSeq = { ...state.contentSaveSeq };
+	const backlinksByNoteId = { ...state.backlinksByNoteId };
 	const failedNoteIds = new Set(state.failedNoteIds);
 	for (const id of ids) {
 		delete noteContents[id];
 		delete contentSaveSeq[id];
+		delete backlinksByNoteId[id];
 		failedNoteIds.delete(id);
 		clearEditorSession(id);
 	}
@@ -736,7 +768,22 @@ function purgeNotesFromState(state: NoteStore, ids: string[]) {
 			activeNodeIds[pane] = null;
 		}
 	}
-	return { noteContents, contentSaveSeq, failedNoteIds, activeNodeIds };
+	const history = state.history.filter((id) => !idSet.has(id));
+	let historyIndex = state.historyIndex;
+	if (history.length === 0) {
+		historyIndex = -1;
+	} else {
+		const current = state.history[state.historyIndex];
+		if (!current || idSet.has(current)) {
+			historyIndex = Math.min(historyIndex, history.length - 1);
+			if (historyIndex < 0) historyIndex = 0;
+		} else {
+			historyIndex = history.indexOf(current);
+			if (historyIndex === -1) historyIndex = Math.min(state.historyIndex, history.length - 1);
+		}
+	}
+	const editingNodeId = state.editingNodeId && idSet.has(state.editingNodeId) ? null : state.editingNodeId;
+	return { noteContents, contentSaveSeq, backlinksByNoteId, failedNoteIds, activeNodeIds, history, historyIndex, editingNodeId };
 }
 
 function flattenVisible(nodes: TreeNode[], expanded: Set<string>, sortMode: 'manual' | 'recent'): string[] {

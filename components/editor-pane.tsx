@@ -46,15 +46,29 @@ interface EditorPaneProps {
 }
 
 export function EditorPane({ paneId }: EditorPaneProps) {
-	const { treeNodes, activeNodeIds, focusedPane, noteContents, loadingNoteIds, failedNoteIds, updateNoteContent, patchLocalContent, setFocusedPane, setSaveStatus, openNote, openWikiLink, retryLoadNote, isSyncScrollEnabled, syncScrollRatio, syncScrollSource, setSyncScrollRatio, isZenMode, isLineWrapEnabled, toggleLineWrap } =
-		useNoteStore();
+	const activeNodeId = useNoteStore((s) => s.activeNodeIds[paneId]);
+	const activeNode = useNoteStore((s) => (activeNodeId ? s.treeNodes.find((n) => n.id === activeNodeId) ?? null : null));
+	const focusedPane = useNoteStore((s) => s.focusedPane);
+	const content = useNoteStore((s) => (activeNodeId ? s.noteContents[activeNodeId] ?? '' : ''));
+	const isLoading = useNoteStore(
+		(s) => (activeNodeId ? s.loadingNoteIds.has(activeNodeId) && s.noteContents[activeNodeId] === undefined : false)
+	);
+	const loadFailed = useNoteStore((s) => (activeNodeId ? s.failedNoteIds.has(activeNodeId) : false));
+	const isSyncScrollEnabled = useNoteStore((s) => s.isSyncScrollEnabled);
+	const syncScrollRatio = useNoteStore((s) => s.syncScrollRatio);
+	const syncScrollSource = useNoteStore((s) => s.syncScrollSource);
+	const isZenMode = useNoteStore((s) => s.isZenMode);
+	const isLineWrapEnabled = useNoteStore((s) => s.isLineWrapEnabled);
+	const updateNoteContent = useNoteStore((s) => s.updateNoteContent);
+	const setFocusedPane = useNoteStore((s) => s.setFocusedPane);
+	const setSaveStatus = useNoteStore((s) => s.setSaveStatus);
+	const openNote = useNoteStore((s) => s.openNote);
+	const openWikiLink = useNoteStore((s) => s.openWikiLink);
+	const retryLoadNote = useNoteStore((s) => s.retryLoadNote);
+	const setSyncScrollRatio = useNoteStore((s) => s.setSyncScrollRatio);
+	const toggleLineWrap = useNoteStore((s) => s.toggleLineWrap);
 
-	const activeNodeId = activeNodeIds[paneId];
-	const activeNode = treeNodes.find((n) => n.id === activeNodeId);
 	const isFocused = focusedPane === paneId;
-	const content = activeNodeId ? (noteContents[activeNodeId] ?? '') : '';
-	const isLoading = activeNodeId ? loadingNoteIds.has(activeNodeId) && noteContents[activeNodeId] === undefined : false;
-	const loadFailed = activeNodeId ? failedNoteIds.has(activeNodeId) : false;
 
 	// Live character count, reported by the editor on every doc change (incl. during
 	// IME composition) so the header counter updates immediately, not just on save.
@@ -72,11 +86,12 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 	}, [activeNodeId, content]);
 
 	const getBreadcrumb = (nodeId: string): { id: string; title: string }[] => {
+		const nodes = useNoteStore.getState().treeNodes;
 		const path: { id: string; title: string }[] = [];
 		let currentId: string | null = nodeId;
 
 		while (currentId) {
-			const node = treeNodes.find((n) => n.id === currentId);
+			const node = nodes.find((n) => n.id === currentId);
 			if (!node) break;
 			path.unshift({ id: node.id, title: node.title });
 			currentId = node.parentId;
@@ -183,7 +198,7 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 						<WrapText className="w-3.5 h-3.5" strokeWidth={2} />
 					</button>
 					{activeNode && <MarkdownToggle nodeId={activeNode.id} isMarkdownView={activeNode.isMarkdownView} />}
-					<StatusIndicator />
+					<StatusIndicator paneId={paneId} />
 				</div>
 			</div>
 
@@ -228,10 +243,10 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 						getNoteTitles={getNoteTitles}
 						isZenMode={isZenMode}
 						onSave={(c) => {
-							setSaveStatus('saving');
+							setSaveStatus(paneId, 'saving');
 							return updateNoteContent(activeNode.id, c)
-								.then(() => setSaveStatus('saved'))
-								.catch(() => setSaveStatus('error'));
+								.then(() => setSaveStatus(paneId, 'saved'))
+								.catch(() => setSaveStatus(paneId, 'error'));
 						}}
 						onFocus={() => setFocusedPane(paneId)}
 						isFocused={isFocused}
@@ -294,7 +309,9 @@ function CodeMirrorEditor({
 }) {
 	const { focusTarget, contentSaveSeq, isLineWrapEnabled } = useNoteStore();
 	const lineWrapCompartmentRef = useRef<Compartment | null>(null);
+	const wysiwygCompartmentRef = useRef<Compartment | null>(null);
 	if (!lineWrapCompartmentRef.current) lineWrapCompartmentRef.current = new Compartment();
+	if (!wysiwygCompartmentRef.current) wysiwygCompartmentRef.current = new Compartment();
 	const isLineWrapEnabledRef = useRef(isLineWrapEnabled);
 	isLineWrapEnabledRef.current = isLineWrapEnabled;
 	const savedContentSeq = contentSaveSeq[activeNodeId] ?? 0;
@@ -319,6 +336,8 @@ function CodeMirrorEditor({
 	isFocusedRef.current = isFocused;
 	const isSyncScrollEnabledRef = useRef(isSyncScrollEnabled);
 	isSyncScrollEnabledRef.current = isSyncScrollEnabled;
+	const isComposingRef = useRef(false);
+	const [compositionTick, setCompositionTick] = useState(0);
 	const onCharCountRef = useRef(onCharCount);
 	onCharCountRef.current = onCharCount;
 
@@ -327,8 +346,8 @@ function CodeMirrorEditor({
 	const markDirty = useCallback(() => {
 		isDirtyRef.current = true;
 		setIsDirty(true);
-		useNoteStore.getState().setSaveStatus('saving');
-	}, []);
+		useNoteStore.getState().setSaveStatus(paneId, 'saving');
+	}, [paneId]);
 
 	const schedulePreview = useCallback(
 		(doc: string) => {
@@ -674,6 +693,7 @@ function CodeMirrorEditor({
 
 		const extensions = [
 			lineWrapCompartmentRef.current.of(isLineWrapEnabledRef.current ? EditorView.lineWrapping : []),
+			wysiwygCompartmentRef.current.of(isMarkdownView ? [wysiwygPlugin, wysiwygTheme, mdTableField] : []),
 			// Rendered markdown tables are block widgets; let the browser copy the
 			// natively-selected text inside them instead of CodeMirror's doc selection.
 			EditorView.domEventHandlers({
@@ -729,7 +749,7 @@ function CodeMirrorEditor({
 				if (u.docChanged) onCharCountRef.current(u.state.doc.length);
 			}),
 			EditorView.updateListener.of((u) => {
-				if (u.docChanged) markDirty();
+				if (u.docChanged && !isComposingRef.current) markDirty();
 			}),
 			keymap.of([
 				...historyKeymap,
@@ -751,15 +771,15 @@ function CodeMirrorEditor({
 					},
 				},
 			]),
-			...imeCompositionGuard((doc) => {
-				schedulePreview(doc);
-			}),
+			...imeCompositionGuard(
+				(doc) => {
+					markDirty();
+					schedulePreview(doc);
+				},
+				isComposingRef,
+				() => setCompositionTick((t) => t + 1)
+			),
 		];
-
-		// Add WYSIWYG extensions when markdown view is enabled
-		if (isMarkdownView) {
-			extensions.push(wysiwygPlugin, wysiwygTheme, mdTableField);
-		}
 
 		const state = EditorState.create({
 			doc: content,
@@ -799,10 +819,10 @@ function CodeMirrorEditor({
 		};
 		// NOTE: intentionally excludes content / isFocused / isZenMode /
 		// isSyncScrollEnabled — those are read via refs so the view is created once
-		// per (note, markdown-mode) and not recreated (which would drop focus).
+		// per note — markdown mode toggles via compartment reconfigure (see below).
 		// External content updates are applied by the "sync external content" effect
 		// below without recreating the view.
-	}, [isMarkdownView, onScrollSync, paneId, onWikiNavigate, getNoteTitles, flushSave, schedulePreview, activeNodeId]);
+	}, [onScrollSync, paneId, onWikiNavigate, getNoteTitles, flushSave, schedulePreview, activeNodeId]);
 
 	// Apply synced scroll from the other pane
 	useEffect(() => {
@@ -818,6 +838,17 @@ function CodeMirrorEditor({
 			isSyncingRef.current = false;
 		});
 	}, [syncScrollRatio, syncScrollSource, isSyncScrollEnabled, paneId]);
+
+	// Toggle WYSIWYG markdown view live without recreating the editor.
+	useEffect(() => {
+		const view = viewRef.current;
+		const compartment = wysiwygCompartmentRef.current;
+		if (view && compartment) {
+			view.dispatch({
+				effects: compartment.reconfigure(isMarkdownView ? [wysiwygPlugin, wysiwygTheme, mdTableField] : []),
+			});
+		}
+	}, [isMarkdownView, wysiwygPlugin, wysiwygTheme]);
 
 	// Toggle soft line-wrap live, without recreating the editor (keeps cursor/scroll).
 	useEffect(() => {
@@ -861,9 +892,9 @@ function CodeMirrorEditor({
 		lastSavedContentRef.current = content;
 	}, [activeNodeId, content]);
 
-	// Save effect (debounced)
+	// Save effect (debounced) — skip while IME is composing
 	useEffect(() => {
-		if (isDirty && viewRef.current) {
+		if (isDirty && viewRef.current && !isComposingRef.current) {
 			if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 			const contentToSave = viewRef.current.state.doc.toString();
 			if (contentToSave === lastSavedContentRef.current) {
@@ -888,7 +919,7 @@ function CodeMirrorEditor({
 		return () => {
 			if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 		};
-	}, [isDirty, markSaved]);
+	}, [isDirty, markSaved, compositionTick]);
 
 	// Flush on window blur / before close
 	useEffect(() => {

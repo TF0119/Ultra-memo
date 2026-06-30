@@ -59,13 +59,10 @@ export function QuickSwitcher({ isOpen, onClose }: QuickSwitcherProps) {
 
 	// Auto-scroll to selected item
 	useEffect(() => {
-		if (resultsRef.current && isOpen) {
-			const selectedElement = resultsRef.current.children[selectedIndex] as HTMLElement;
-			if (selectedElement) {
-				selectedElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-			}
-		}
-	}, [selectedIndex, isOpen]);
+		if (!resultsRef.current || !isOpen || displayResults.length === 0) return;
+		const selectedElement = resultsRef.current.querySelector(`[data-result-idx="${selectedIndex}"]`);
+		selectedElement?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+	}, [selectedIndex, isOpen, displayResults.length]);
 
 	// Handle keyboard navigation
 	useEffect(() => {
@@ -167,6 +164,7 @@ export function QuickSwitcher({ isOpen, onClose }: QuickSwitcherProps) {
 							return (
 								<div
 									key={node.id}
+									data-result-idx={index}
 									className={cn(
 										'px-4 py-3 cursor-pointer border-b border-border/30 last:border-0 transition-all duration-100',
 										index === selectedIndex ? 'bg-accent/80 shadow-sm' : 'hover:bg-accent/40 active:bg-accent/60'

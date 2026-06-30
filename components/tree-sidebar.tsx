@@ -15,7 +15,7 @@ import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrate
 
 const ROW_HEIGHT = 32;
 
-export function TreeSidebar() {
+export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | 'split' }) {
 	const {
 		treeNodes,
 		selectedNodeId,
@@ -119,8 +119,9 @@ export function TreeSidebar() {
 	}, []);
 
 	const handleSelect = (id: string, e: React.MouseEvent) => {
+		const visibleFlat = displayedNodes.map((n) => n.node.id);
 		if (e.ctrlKey || e.metaKey) selectNode(id, { additive: true });
-		else if (e.shiftKey) selectNode(id, { range: true });
+		else if (e.shiftKey) selectNode(id, { range: true, visibleFlat });
 		else selectNode(id);
 	};
 
@@ -136,7 +137,7 @@ export function TreeSidebar() {
 		const { active, over } = event;
 		setActiveDragId(null);
 		setNestTargetId(null);
-		if (!over || active.id === over.id) return;
+		if (searchQuery || !over || active.id === over.id) return;
 
 		const activeId = String(active.id);
 		const overId = String(over.id);
@@ -175,7 +176,8 @@ export function TreeSidebar() {
 			if (e.key === 'Enter' && !e.repeat) {
 				e.preventDefault();
 				e.stopPropagation();
-				const targetPane = e.ctrlKey ? ((focusedPane === 1 ? 2 : 1) as 1 | 2) : focusedPane;
+				const targetPane =
+					e.ctrlKey && splitMode === 'split' ? ((focusedPane === 1 ? 2 : 1) as 1 | 2) : focusedPane;
 				openNote(selectedNodeId, targetPane);
 				if (!e.ctrlKey) triggerEditorFocus();
 			} else if (e.key === 'F2') {
@@ -240,6 +242,7 @@ export function TreeSidebar() {
 			treeNodes,
 			expandedNodeIds,
 			focusedPane,
+			splitMode,
 			displayedNodes,
 			openNote,
 			selectNode,
@@ -291,7 +294,7 @@ export function TreeSidebar() {
 						<Plus className="w-4 h-4" />
 					</Button>
 				</div>
-				{isShiftHeld && activeDragId && (
+				{isShiftHeld && activeDragId && !searchQuery && (
 					<p className="text-[10px] text-primary font-medium px-0.5 animate-pulse">↳ ここにドロップで子ノート化</p>
 				)}
 			</div>
@@ -404,7 +407,7 @@ export function TreeSidebar() {
 			</DndContext>
 
 			<div className="px-4 py-1.5 border-t border-sidebar-border text-[10px] text-muted-foreground flex-shrink-0 bg-sidebar/60 font-medium tracking-tight flex justify-between gap-2">
-				<span>{treeNodes.length} items{selectedNodeIds.size > 1 ? ` · ${selectedNodeIds.size} 選択` : ''}</span>
+				<span>{treeNodes.length} 件{selectedNodeIds.size > 1 ? ` · ${selectedNodeIds.size} 選択` : ''}</span>
 				<span className="opacity-50 text-right truncate">
 					{sortMode === 'recent' ? '新しい順' : '手動順'}
 					{selectedNodeId && sortMode === 'recent' && (() => {

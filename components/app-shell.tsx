@@ -18,6 +18,7 @@ export function AppShell() {
 	const [splitMode, setSplitModeState] = useState<'single' | 'split'>(loadSplitMode);
 	const {
 		isInitialized,
+		initError,
 		initialize,
 		selectedNodeId,
 		activeNodeIds,
@@ -30,6 +31,7 @@ export function AppShell() {
 		toggleZenMode,
 		isCommandPaletteOpen,
 		setCommandPaletteOpen,
+		setEditingNodeId,
 		expandAll,
 		collapseAll,
 		goBack,
@@ -37,20 +39,30 @@ export function AppShell() {
 		setFocusedPane,
 	} = useNoteStore();
 
+	const modalOpen = isQuickSwitcherOpen || isCommandPaletteOpen;
+
+	useEffect(() => {
+		if (!isInitialized && !initError) initialize();
+	}, [isInitialized, initError, initialize]);
+
 	const setSplitMode = useCallback((mode: 'single' | 'split') => {
 		setSplitModeState(mode);
 		saveSplitMode(mode);
 	}, []);
 
 	useEffect(() => {
-		if (!isInitialized) initialize();
-	}, [isInitialized, initialize]);
-
-	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
 			const target = e.target as HTMLElement;
 			const inEditor = target?.closest('.cm-editor');
 			const inInput = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA';
+
+			if (modalOpen && e.key !== 'Escape') return;
+
+			if (e.key === 'F2' && selectedNodeId && !inInput && !modalOpen) {
+				e.preventDefault();
+				setEditingNodeId(selectedNodeId);
+				return;
+			}
 
 			if (e.ctrlKey && e.shiftKey && e.key === 'P') {
 				e.preventDefault();
@@ -110,23 +122,23 @@ export function AppShell() {
 				setFocusedPane(2);
 			}
 
-			if (e.altKey && e.key === 'ArrowLeft' && !inEditor && !inInput && !isQuickSwitcherOpen && !isCommandPaletteOpen) {
+			if (e.altKey && e.key === 'ArrowLeft' && !inEditor && !inInput && !modalOpen) {
 				e.preventDefault();
 				goBack();
 			}
 
-			if (e.altKey && e.key === 'ArrowRight' && !inEditor && !inInput && !isQuickSwitcherOpen && !isCommandPaletteOpen) {
+			if (e.altKey && e.key === 'ArrowRight' && !inEditor && !inInput && !modalOpen) {
 				e.preventDefault();
 				goForward();
 			}
 
 			const inTree = target?.closest('[data-tree-sidebar]');
-			if (e.key === 'Enter' && !e.repeat && !e.ctrlKey && selectedNodeId && !inEditor && !inInput && !inTree && !isQuickSwitcherOpen && !isCommandPaletteOpen) {
+			if (e.key === 'Enter' && !e.repeat && !e.ctrlKey && selectedNodeId && !inEditor && !inInput && !inTree && !modalOpen) {
 				e.preventDefault();
 				openNote(selectedNodeId, focusedPane);
 			}
 
-			if (e.ctrlKey && e.key === 'Enter' && !e.repeat && selectedNodeId && !inEditor && !inInput && !isQuickSwitcherOpen && !isCommandPaletteOpen) {
+			if (e.ctrlKey && e.key === 'Enter' && !e.repeat && selectedNodeId && !inEditor && !inInput && !modalOpen) {
 				e.preventDefault();
 				const targetPane = splitMode === 'split' ? ((focusedPane === 1 ? 2 : 1) as 1 | 2) : focusedPane;
 				openNote(selectedNodeId, targetPane);
@@ -144,6 +156,8 @@ export function AppShell() {
 		focusedPane,
 		openNote,
 		splitMode,
+		setEditingNodeId,
+		modalOpen,
 		isQuickSwitcherOpen,
 		isCommandPaletteOpen,
 		toggleZenMode,
@@ -174,6 +188,21 @@ export function AppShell() {
 		document.addEventListener('mouseup', handleMouseUp);
 	};
 
+	if (initError && !isInitialized) {
+		return (
+			<div className="h-screen flex flex-col items-center justify-center gap-4 bg-background text-foreground px-6">
+				<p className="text-sm text-muted-foreground">{initError}</p>
+				<button
+					type="button"
+					onClick={() => initialize()}
+					className="text-xs px-4 py-2 rounded border border-border hover:bg-muted/30 transition-colors"
+				>
+					再試行
+				</button>
+			</div>
+		);
+	}
+
 	return (
 		<div className={cn('h-screen flex flex-col overflow-hidden bg-background antialiased', isZenMode && 'zen-mode')}>
 			<div className="flex-1 flex overflow-hidden">
@@ -182,7 +211,7 @@ export function AppShell() {
 						<div className="flex-shrink-0 flex flex-col border-r border-border" style={{ width: `${sidebarWidth}px` }}>
 							<SidebarHeader splitMode={splitMode} setSplitMode={setSplitMode} />
 							<div className="flex-1 overflow-hidden">
-								<TreeSidebar />
+								<TreeSidebar splitMode={splitMode} />
 							</div>
 						</div>
 						<div

@@ -5,6 +5,7 @@ import { useNoteStore } from '@/lib/store';
 import { TEMPLATES, applyTemplate } from '@/lib/templates';
 import { Search, Zap, FileText, Settings, Layout } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ConfirmDialog } from './confirm-dialog';
 
 interface Command {
 	id: string;
@@ -37,6 +38,7 @@ export function CommandPalette({ isOpen, onClose, onOpenSearch, splitMode, setSp
 	const store = useNoteStore();
 	const [query, setQuery] = useState('');
 	const [selectedIndex, setSelectedIndex] = useState(0);
+	const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const listRef = useRef<HTMLDivElement>(null);
 
@@ -57,7 +59,7 @@ export function CommandPalette({ isOpen, onClose, onOpenSearch, splitMode, setSp
 			{ id: 'collapse', label: 'すべて折りたたむ', shortcut: 'Ctrl+Shift+[', keywords: 'collapse all', group: 'tree', action: () => store.collapseAll() },
 			{ id: 'export', label: 'Markdownエクスポート', keywords: 'export download', group: 'tree', action: () => store.exportMarkdownTree() },
 			{ id: 'pin', label: '選択ノートをピン留め', keywords: 'pin', group: 'tree', action: () => store.batchPin(true) },
-			{ id: 'delete', label: '選択ノートを削除', keywords: 'delete trash', group: 'tree', action: () => store.batchDelete() },
+			{ id: 'delete', label: '選択ノートを削除', keywords: 'delete trash', group: 'tree', action: () => setBatchDeleteOpen(true) },
 			...TEMPLATES.filter((t) => t.id !== 'blank' && t.id !== 'quick').map((t) => ({
 				id: `tpl-${t.id}`,
 				label: `テンプレート挿入: ${t.name}`,
@@ -204,6 +206,19 @@ export function CommandPalette({ isOpen, onClose, onOpenSearch, splitMode, setSp
 					)}
 				</div>
 			</div>
+
+			<ConfirmDialog
+				open={batchDeleteOpen}
+				onOpenChange={setBatchDeleteOpen}
+				title={`${store.selectedNodeIds.size}件のノートを削除しますか？`}
+				description="選択したノートをまとめてゴミ箱に移動します。あとでゴミ箱から復元できます。"
+				confirmLabel="削除"
+				onConfirm={() => {
+					void store.batchDelete();
+					setBatchDeleteOpen(false);
+					onClose();
+				}}
+			/>
 		</div>
 	);
 }
