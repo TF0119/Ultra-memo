@@ -257,10 +257,32 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	},
 
 	openNote: async (id, paneId, shouldFocusEditor = true, skipHistory = false) => {
-		get().flushEditorSave();
 		const prior = get();
 		const alreadyOpen =
 			prior.activeNodeIds[paneId] === id && prior.noteContents[id] !== undefined && !prior.failedNoteIds.has(id);
+
+		// Re-selecting the note that's already open in this pane shouldn't flush
+		// the editor — that was causing spurious saves and focus churn while writing.
+		if (alreadyOpen) {
+			try {
+				await invoke('touch_open', { id });
+				const openNodes = await invoke<string[]>('get_open_list', { limit: 50 });
+				set((state) => ({
+					openNodeIds: new Set(openNodes),
+					focusedPane: paneId,
+					selectedNodeId: id,
+					selectedNodeIds: new Set([id]),
+					focusTarget: shouldFocusEditor
+						? { nodeId: id, paneId, trigger: state.focusTarget.trigger + 1 }
+						: state.focusTarget,
+				}));
+			} catch (error) {
+				console.error('Failed to refresh open note:', error);
+			}
+			return;
+		}
+
+		get().flushEditorSave(paneId);
 
 		const applyOpenState = (openNodes: string[]) => {
 			set((state) => {
@@ -303,14 +325,6 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 		};
 
 		try {
-			if (alreadyOpen) {
-				const openNodes = await invoke<string[]>('get_open_list', { limit: 50 });
-				await invoke('touch_open', { id });
-				get().loadBacklinks(id);
-				applyOpenState(openNodes);
-				return;
-			}
-
 			const [content] = await Promise.all([get().loadNoteContent(id), invoke('touch_open', { id })]);
 			void content;
 			const openNodes = await invoke<string[]>('get_open_list', { limit: 50 });
@@ -396,12 +410,13 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 					treeNodes,
 					selectedNodeId: newNode.id,
 					selectedNodeIds: new Set([newNode.id]),
-					editingNodeId: newNode.id,
+					// Child notes go straight to body input; title auto-fills from first line on save.
+					editingNodeId: null,
 					expandedNodeIds: newExpanded,
 					noteContents: { ...state.noteContents, [newNode.id]: '' },
 				};
 			});
-			await get().openNote(newNode.id, get().focusedPane, false);
+			await get().openNote(newNode.id, get().focusedPane, true);
 		} catch (error) {
 			console.error('Failed to create child:', error);
 		}

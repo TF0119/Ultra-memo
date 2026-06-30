@@ -104,7 +104,7 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 			className={cn('h-full flex flex-col transition-all duration-150 relative', isFocused ? 'ring-1 ring-inset ring-foreground/[0.08] bg-background' : 'bg-muted/20')}
 			onClick={() => setFocusedPane(paneId)}
 		>
-			<div className="px-8 pt-5 pb-3 flex items-center justify-between text-[11px] flex-shrink-0 min-h-[44px]">
+			<div className={cn('px-8 pt-5 pb-3 flex items-center justify-between text-[11px] flex-shrink-0 min-h-[44px]', isZenMode && 'opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300 pt-3 pb-2 min-h-[36px]')}>
 				<div className="flex items-center gap-1.5 text-muted-foreground/40 font-medium tracking-tight h-4">
 					{breadcrumb.map((item, index) => (
 						<span key={item.id} className="flex items-center gap-1.5">
@@ -728,6 +728,9 @@ function CodeMirrorEditor({
 			EditorView.updateListener.of((u) => {
 				if (u.docChanged) onCharCountRef.current(u.state.doc.length);
 			}),
+			EditorView.updateListener.of((u) => {
+				if (u.docChanged) markDirty();
+			}),
 			keymap.of([
 				...historyKeymap,
 				...searchKeymap,
@@ -749,7 +752,6 @@ function CodeMirrorEditor({
 				},
 			]),
 			...imeCompositionGuard((doc) => {
-				markDirty();
 				schedulePreview(doc);
 			}),
 		];

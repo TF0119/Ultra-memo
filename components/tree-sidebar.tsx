@@ -174,6 +174,7 @@ export function TreeSidebar() {
 			const selectedNode = treeNodes.find((n) => n.id === selectedNodeId);
 			if (e.key === 'Enter' && !e.repeat) {
 				e.preventDefault();
+				e.stopPropagation();
 				const targetPane = e.ctrlKey ? ((focusedPane === 1 ? 2 : 1) as 1 | 2) : focusedPane;
 				openNote(selectedNodeId, targetPane);
 				if (!e.ctrlKey) triggerEditorFocus();
@@ -252,7 +253,7 @@ export function TreeSidebar() {
 	);
 
 	return (
-		<div className="h-full flex flex-col bg-sidebar">
+		<div className="h-full flex flex-col bg-sidebar" data-tree-sidebar>
 			<div className="p-3 border-b border-sidebar-border flex-shrink-0 space-y-2">
 				<div className="flex items-center gap-2">
 					<div className="relative flex-1">

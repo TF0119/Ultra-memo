@@ -11,7 +11,7 @@ interface BacklinksPanelProps {
 
 export function BacklinksPanel({ paneId }: BacklinksPanelProps) {
 	const { backlinks, openNote, activeNodeIds } = useNoteStore();
-	const [expanded, setExpanded] = useState(true);
+	const [expanded, setExpanded] = useState(false);
 	const activeId = activeNodeIds[paneId];
 
 	if (!activeId || backlinks.length === 0) return null;

@@ -20,6 +20,7 @@ export function AppShell() {
 		isInitialized,
 		initialize,
 		selectedNodeId,
+		activeNodeIds,
 		focusedPane,
 		openNote,
 		createSibling,
@@ -58,7 +59,6 @@ export function AppShell() {
 			}
 
 			if (e.ctrlKey && e.shiftKey && (e.key === 'm' || e.key === 'M')) {
-				if (inEditor) return;
 				e.preventDefault();
 				quickCapture();
 				return;
@@ -95,9 +95,9 @@ export function AppShell() {
 			}
 
 			if (e.ctrlKey && e.shiftKey && e.key === 'N') {
-				if (inEditor) return;
 				e.preventDefault();
-				createChild(selectedNodeId);
+				const parentId = selectedNodeId ?? activeNodeIds[focusedPane] ?? null;
+				createChild(parentId);
 			}
 
 			if (e.ctrlKey && e.key === '1') {
@@ -120,7 +120,8 @@ export function AppShell() {
 				goForward();
 			}
 
-			if (e.key === 'Enter' && !e.repeat && !e.ctrlKey && selectedNodeId && !inEditor && !inInput && !isQuickSwitcherOpen && !isCommandPaletteOpen) {
+			const inTree = target?.closest('[data-tree-sidebar]');
+			if (e.key === 'Enter' && !e.repeat && !e.ctrlKey && selectedNodeId && !inEditor && !inInput && !inTree && !isQuickSwitcherOpen && !isCommandPaletteOpen) {
 				e.preventDefault();
 				openNote(selectedNodeId, focusedPane);
 			}
@@ -136,6 +137,7 @@ export function AppShell() {
 		return () => window.removeEventListener('keydown', handleKeyDown);
 	}, [
 		selectedNodeId,
+		activeNodeIds,
 		createSibling,
 		createChild,
 		quickCapture,

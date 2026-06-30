@@ -44,7 +44,7 @@ export function CommandPalette({ isOpen, onClose, onOpenSearch, splitMode, setSp
 		() => [
 			{ id: 'quick', label: 'クイックキャプチャ（一言メモ）', shortcut: 'Ctrl+Shift+M', keywords: 'quick capture memo 一言', group: 'capture', action: () => store.quickCapture() },
 			{ id: 'new', label: '新規ノート（同階層）', shortcut: 'Ctrl+N', keywords: 'new sibling', group: 'capture', action: () => (store.selectedNodeId ? store.createSibling(store.selectedNodeId) : store.createChild(null)) },
-			{ id: 'child', label: '子ノートを作成', shortcut: 'Ctrl+Shift+N', keywords: 'child', group: 'capture', action: () => store.createChild(store.selectedNodeId) },
+			{ id: 'child', label: '子ノートを作成', shortcut: 'Ctrl+Shift+N', keywords: 'child', group: 'capture', action: () => store.createChild(store.selectedNodeId ?? store.activeNodeIds[store.focusedPane] ?? null) },
 			{ id: 'search', label: 'ノートを検索', shortcut: 'Ctrl+P', keywords: 'find search 検索', group: 'nav', action: () => onOpenSearch() },
 			{ id: 'back', label: '戻る', shortcut: 'Alt+←', keywords: 'back history 戻る', group: 'nav', action: () => store.goBack() },
 			{ id: 'forward', label: '進む', shortcut: 'Alt+→', keywords: 'forward history 進む', group: 'nav', action: () => store.goForward() },
