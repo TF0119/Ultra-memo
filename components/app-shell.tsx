@@ -195,6 +195,20 @@ export function AppShell() {
 		triggerEditorFocus,
 	]);
 
+	useEffect(() => {
+		const handleAuxClick = (e: MouseEvent) => {
+			if (e.button !== 3 && e.button !== 4) return;
+			if (modalOpen) return;
+			const target = e.target as HTMLElement;
+			if (target?.closest('.cm-editor') || target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return;
+			e.preventDefault();
+			if (e.button === 3) goBack();
+			else goForward();
+		};
+		window.addEventListener('auxclick', handleAuxClick);
+		return () => window.removeEventListener('auxclick', handleAuxClick);
+	}, [modalOpen, goBack, goForward]);
+
 	const handleResize = useCallback((e: MouseEvent) => {
 		const newWidth = e.clientX;
 		if (newWidth >= 200 && newWidth <= 500) {
