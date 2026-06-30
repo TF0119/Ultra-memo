@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { isPlaceholderTitle } from './wiki-links';
-import { loadSortMode, saveSortMode, loadFollowActive, saveFollowActive, loadSyncScroll, saveSyncScroll, loadLineWrap, saveLineWrap, formatQuickCaptureTitle, loadExpandedNodes, saveExpandedNodes } from './preferences';
+import { loadSortMode, saveSortMode, loadFollowActive, saveFollowActive, loadSyncScroll, saveSyncScroll, loadLineWrap, saveLineWrap, formatQuickCaptureTitle, loadExpandedNodes, saveExpandedNodes, loadSplitMode } from './preferences';
 import { clearEditorSession } from './editor-session';
 
 export interface TreeNode {
@@ -55,6 +55,7 @@ interface NoteStore {
 	backlinksLoadSeq: number;
 	contentSaveSeq: Record<string, number>;
 	editorFlushByPane: { 1: (() => void) | null; 2: (() => void) | null };
+	editorFlushAsyncByPane: { 1: (() => Promise<void>) | null; 2: (() => Promise<void>) | null };
 	editorGetDocByPane: { 1: (() => string) | null; 2: (() => string) | null };
 	failedNoteIds: Set<string>;
 
@@ -100,8 +101,10 @@ interface NoteStore {
 	goForward: () => void;
 	setSaveStatus: (paneId: 1 | 2, status: 'saved' | 'saving' | 'error') => void;
 	registerEditorFlush: (paneId: 1 | 2, fn: (() => void) | null) => void;
+	registerEditorFlushAsync: (paneId: 1 | 2, fn: (() => Promise<void>) | null) => void;
 	registerEditorGetDoc: (paneId: 1 | 2, fn: (() => string) | null) => void;
 	flushEditorSave: (paneId?: 1 | 2) => void;
+	flushAllAndWait: () => Promise<void>;
 	purgeNotesFromFrontend: (ids: string[]) => void;
 }
 
@@ -152,6 +155,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	backlinksLoadSeq: 0,
 	contentSaveSeq: {},
 	editorFlushByPane: { 1: null, 2: null },
+	editorFlushAsyncByPane: { 1: null, 2: null },
 	editorGetDocByPane: { 1: null, 2: null },
 	failedNoteIds: new Set(),
 
@@ -180,6 +184,17 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 					await get().loadNoteContent(openNodes[0]);
 				} catch {
 					// failedNoteIds tracks load failure for UI retry
+				}
+				if (loadSplitMode() === 'split' && openNodes.length > 1) {
+					const secondId = openNodes.find((id) => id !== openNodes[0]) ?? openNodes[1];
+					try {
+						await get().loadNoteContent(secondId);
+						set((s) => ({
+							activeNodeIds: { ...s.activeNodeIds, 2: secondId },
+						}));
+					} catch {
+						// pane 2 stays empty if load fails
+					}
 				}
 			}
 			// Drop expand state for notes that no longer exist.
@@ -361,7 +376,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 
 	updateNoteContent: async (id, content) => {
 		try {
-			await invoke('update_note', { id, content });
+			const updatedAt = await invoke<number>('update_note', { id, content });
 			set((state) => {
 				const preview = content.slice(0, 80);
 				const node = state.treeNodes.find((n) => n.id === id);
@@ -376,7 +391,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 					noteContents: { ...state.noteContents, [id]: content },
 					contentSaveSeq: { ...state.contentSaveSeq, [id]: (state.contentSaveSeq[id] ?? 0) + 1 },
 					treeNodes: state.treeNodes.map((n) =>
-						n.id === id ? { ...n, title, contentPreview: preview, contentLength: content.length, updatedAt: Date.now() } : n
+						n.id === id ? { ...n, title, contentPreview: preview, contentLength: content.length, updatedAt } : n
 					),
 				};
 			});
@@ -769,6 +784,12 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 		}));
 	},
 
+	registerEditorFlushAsync: (paneId, fn) => {
+		set((state) => ({
+			editorFlushAsyncByPane: { ...state.editorFlushAsyncByPane, [paneId]: fn },
+		}));
+	},
+
 	flushEditorSave: (paneId) => {
 		const { editorFlushByPane } = get();
 		if (paneId) {
@@ -777,6 +798,13 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 		}
 		editorFlushByPane[1]?.();
 		editorFlushByPane[2]?.();
+	},
+
+	flushAllAndWait: async () => {
+		const { editorFlushAsyncByPane } = get();
+		await Promise.all(
+			([1, 2] as const).map((p) => editorFlushAsyncByPane[p]?.() ?? Promise.resolve())
+		);
 	},
 
 	purgeNotesFromFrontend: (ids) => {
@@ -818,7 +846,9 @@ function purgeNotesFromState(state: NoteStore, ids: string[]) {
 		}
 	}
 	const editingNodeId = state.editingNodeId && idSet.has(state.editingNodeId) ? null : state.editingNodeId;
-	return { noteContents, contentSaveSeq, backlinksByNoteId, failedNoteIds, activeNodeIds, history, historyIndex, editingNodeId };
+	const openNodeIds = new Set(state.openNodeIds);
+	for (const id of ids) openNodeIds.delete(id);
+	return { noteContents, contentSaveSeq, backlinksByNoteId, failedNoteIds, activeNodeIds, history, historyIndex, editingNodeId, openNodeIds };
 }
 
 function flattenVisible(nodes: TreeNode[], expanded: Set<string>, sortMode: 'manual' | 'recent'): string[] {
@@ -862,7 +892,14 @@ function optimisticMove(state: NoteStore, noteId: string, newParentId: string | 
 		node.orderKey = index * 1000;
 	});
 	nodes.push(movingNode);
-	return { treeNodes: nodes };
+	return { treeNodes: refreshHasChildrenFlags(nodes) };
+}
+
+function refreshHasChildrenFlags(nodes: TreeNode[]): TreeNode[] {
+	return nodes.map((n) => ({
+		...n,
+		hasChildren: nodes.some((c) => c.parentId === n.id),
+	}));
 }
 
 export { flattenVisible, canNavigateHistory };

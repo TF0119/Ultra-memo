@@ -7,9 +7,16 @@ type EditorSession = {
 };
 
 const sessions = new Map<string, EditorSession>();
+const MAX_SESSIONS = 48;
 
 export function saveEditorSession(noteId: string, view: EditorView) {
 	const main = view.state.selection.main;
+	if (sessions.has(noteId)) {
+		sessions.delete(noteId);
+	} else if (sessions.size >= MAX_SESSIONS) {
+		const oldest = sessions.keys().next().value;
+		if (oldest) sessions.delete(oldest);
+	}
 	sessions.set(noteId, {
 		anchor: main.anchor,
 		head: main.head,

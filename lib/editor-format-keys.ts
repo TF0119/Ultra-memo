@@ -49,6 +49,30 @@ export function markdownFormatKeymap() {
 			{ key: 'Mod-i', run: (view) => wrapSelection(view, '*') },
 			{ key: 'Mod-Shift-d', run: copyLineDown },
 			{ key: 'Mod-Shift-k', run: deleteLine },
+			{
+				key: 'Mod-Alt-1',
+				run: (view) => {
+					const line = view.state.doc.lineAt(view.state.selection.main.from);
+					view.dispatch({ changes: { from: line.from, to: line.from, insert: '# ' } });
+					return true;
+				},
+			},
+			{
+				key: 'Mod-Alt-2',
+				run: (view) => {
+					const line = view.state.doc.lineAt(view.state.selection.main.from);
+					view.dispatch({ changes: { from: line.from, to: line.from, insert: '## ' } });
+					return true;
+				},
+			},
+			{
+				key: 'Mod-Alt-3',
+				run: (view) => {
+					const line = view.state.doc.lineAt(view.state.selection.main.from);
+					view.dispatch({ changes: { from: line.from, to: line.from, insert: '### ' } });
+					return true;
+				},
+			},
 			{ key: 'Tab', run: (view) => indentListLine(view, 2) },
 			{ key: 'Shift-Tab', run: (view) => indentListLine(view, -2) },
 		])

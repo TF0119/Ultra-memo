@@ -22,9 +22,6 @@ export function SidebarHeader({ splitMode, setSplitMode }: SidebarHeaderProps) {
 	const canGoForward = canNavigateHistory(store, 'forward');
 
 	const toggleSplit = () => {
-		if (splitMode === 'split') {
-			useNoteStore.getState().flushEditorSave(2);
-		}
 		setSplitMode(splitMode === 'single' ? 'split' : 'single');
 	};
 

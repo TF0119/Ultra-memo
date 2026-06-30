@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useNoteStore } from '@/lib/store';
 import { Button } from './ui/button';
-import { Pin, Trash2, X } from 'lucide-react';
+import { Pin, PinOff, Trash2, X } from 'lucide-react';
 import { ConfirmDialog } from './confirm-dialog';
 
 export function MultiSelectBar() {
@@ -19,6 +19,10 @@ export function MultiSelectBar() {
 			<Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={() => batchPin(true)}>
 				<Pin className="w-3 h-3" />
 				ピン
+			</Button>
+			<Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={() => batchPin(false)}>
+				<PinOff className="w-3 h-3" />
+				解除
 			</Button>
 			<Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-red-500 hover:text-red-500 hover:bg-red-500/10" onClick={() => setConfirmOpen(true)}>
 				<Trash2 className="w-3 h-3" />

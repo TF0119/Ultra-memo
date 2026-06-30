@@ -17,7 +17,7 @@ pub fn get_note(state: State<'_, AppState>, id: String) -> Result<Note, String> 
     let id_int = id.parse::<i64>().map_err(|_| "Invalid ID format")?;
 
     let note = conn.query_row(
-        "SELECT id, title, content, updated_at FROM notes WHERE id = ?",
+        "SELECT id, title, content, updated_at FROM notes WHERE id = ? AND is_deleted = 0",
         [id_int],
         |row| {
             Ok(Note {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { TreeSidebar } from './tree-sidebar';
 import { EditorWorkspace } from './editor-workspace';
 import { QuickSwitcher } from './quick-switcher';
@@ -46,7 +47,29 @@ export function AppShell() {
 		if (!isInitialized && !initError) initialize();
 	}, [isInitialized, initError, initialize]);
 
+	useEffect(() => {
+		let unlisten: (() => void) | undefined;
+		void getCurrentWindow()
+			.onCloseRequested(async (event) => {
+				event.preventDefault();
+				await useNoteStore.getState().flushAllAndWait();
+				await getCurrentWindow().destroy();
+			})
+			.then((fn) => {
+				unlisten = fn;
+			})
+			.catch(() => {
+				/* browser / non-Tauri */
+			});
+		return () => {
+			unlisten?.();
+		};
+	}, []);
+
 	const setSplitMode = useCallback((mode: 'single' | 'split') => {
+		if (mode === 'single') {
+			useNoteStore.getState().flushEditorSave(2);
+		}
 		setSplitModeState(mode);
 		saveSplitMode(mode);
 	}, []);

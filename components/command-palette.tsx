@@ -59,6 +59,7 @@ export function CommandPalette({ isOpen, onClose, onOpenSearch, splitMode, setSp
 			{ id: 'collapse', label: 'すべて折りたたむ', shortcut: 'Ctrl+Shift+[', keywords: 'collapse all', group: 'tree', action: () => store.collapseAll() },
 			{ id: 'export', label: 'Markdownエクスポート', keywords: 'export download', group: 'tree', action: () => store.exportMarkdownTree() },
 			{ id: 'pin', label: '選択ノートをピン留め', keywords: 'pin', group: 'tree', action: () => store.batchPin(true) },
+			{ id: 'unpin', label: '選択ノートのピン留めを解除', keywords: 'unpin', group: 'tree', action: () => store.batchPin(false) },
 			{ id: 'delete', label: '選択ノートを削除', keywords: 'delete trash', group: 'tree', action: () => { if (store.selectedNodeIds.size > 0) setBatchDeleteOpen(true); } },
 			...TEMPLATES.filter((t) => t.id !== 'blank' && t.id !== 'quick').map((t) => ({
 				id: `tpl-${t.id}`,

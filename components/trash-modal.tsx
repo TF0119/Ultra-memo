@@ -22,16 +22,19 @@ interface TrashModalProps {
 export function TrashModal({ open, onOpenChange }: TrashModalProps) {
 	const [deletedNotes, setDeletedNotes] = useState<DeletedNote[]>([]);
 	const [loading, setLoading] = useState(false);
+	const [error, setError] = useState<string | null>(null);
 	const [hardDeleteTarget, setHardDeleteTarget] = useState<DeletedNote | null>(null);
 	const { refreshTree, purgeNotesFromFrontend } = useNoteStore();
 
 	const loadDeletedNotes = async () => {
 		setLoading(true);
+		setError(null);
 		try {
 			const notes = await invoke<DeletedNote[]>('get_deleted_notes');
 			setDeletedNotes(notes);
-		} catch (error) {
-			console.error('Failed to load deleted notes:', error);
+		} catch (err) {
+			console.error('Failed to load deleted notes:', err);
+			setError('ゴミ箱の読み込みに失敗しました');
 		} finally {
 			setLoading(false);
 		}
@@ -44,23 +47,27 @@ export function TrashModal({ open, onOpenChange }: TrashModalProps) {
 	}, [open]);
 
 	const handleRestore = async (id: string) => {
+		setError(null);
 		try {
 			await invoke('restore_note', { id });
 			setDeletedNotes((prev) => prev.filter((n) => n.id !== id));
 			await refreshTree();
-		} catch (error) {
-			console.error('Failed to restore note:', error);
+		} catch (err) {
+			console.error('Failed to restore note:', err);
+			setError('ノートの復元に失敗しました');
 		}
 	};
 
 	const handleHardDelete = async (id: string) => {
+		setError(null);
 		try {
 			await invoke('hard_delete_note', { id });
 			setDeletedNotes((prev) => prev.filter((n) => n.id !== id));
 			purgeNotesFromFrontend([id]);
 			await refreshTree();
-		} catch (error) {
-			console.error('Failed to hard delete note:', error);
+		} catch (err) {
+			console.error('Failed to hard delete note:', err);
+			setError('ノートの完全削除に失敗しました');
 		}
 	};
 
@@ -85,6 +92,9 @@ export function TrashModal({ open, onOpenChange }: TrashModalProps) {
 				</DialogHeader>
 
 				<div className="mt-4 max-h-80 overflow-y-auto">
+					{error && (
+						<div className="mb-3 px-3 py-2 rounded-md bg-red-500/10 text-red-500 text-xs">{error}</div>
+					)}
 					{loading ? (
 						<div className="py-8 text-center text-muted-foreground text-sm">読み込み中...</div>
 					) : deletedNotes.length === 0 ? (

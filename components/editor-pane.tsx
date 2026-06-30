@@ -326,6 +326,15 @@ function CodeMirrorEditor({
 	const onSaveRef = useRef(onSave);
 	const previewTimerRef = useRef<NodeJS.Timeout | null>(null);
 	const lastSavedContentRef = useRef(content);
+	const saveGenerationRef = useRef(0);
+
+	useEffect(() => {
+		saveGenerationRef.current += 1;
+		if (saveTimeoutRef.current) {
+			clearTimeout(saveTimeoutRef.current);
+			saveTimeoutRef.current = null;
+		}
+	}, [activeNodeId]);
 
 	// Volatile values read inside CodeMirror extensions/handlers. Kept in refs so
 	// they don't have to live in the view-creation effect's deps — otherwise the
@@ -369,33 +378,39 @@ function CodeMirrorEditor({
 		setIsDirty(false);
 	}, []);
 
-	const flushSave = useCallback(() => {
+	const flushSaveAsync = useCallback(async (): Promise<void> => {
 		if (saveTimeoutRef.current) {
 			clearTimeout(saveTimeoutRef.current);
 			saveTimeoutRef.current = null;
 		}
-		if (isDirtyRef.current && viewRef.current) {
-			saveEditorSession(activeNodeId, viewRef.current);
-			const contentToSave = viewRef.current.state.doc.toString();
-			if (contentToSave === lastSavedContentRef.current) {
+		if (!isDirtyRef.current || !viewRef.current) return;
+
+		saveEditorSession(activeNodeId, viewRef.current);
+		const contentToSave = viewRef.current.state.doc.toString();
+		if (contentToSave === lastSavedContentRef.current) {
+			markSaved();
+			return;
+		}
+		const gen = saveGenerationRef.current;
+		const result = onSaveRef.current(contentToSave);
+		if (result && typeof (result as Promise<void>).then === 'function') {
+			try {
+				await result;
+				if (gen !== saveGenerationRef.current) return;
+				lastSavedContentRef.current = contentToSave;
 				markSaved();
-				return;
+			} catch {
+				if (gen !== saveGenerationRef.current) return;
+				useNoteStore.getState().setSaveStatus(paneId, 'error');
 			}
-			const result = onSaveRef.current(contentToSave);
-			if (result && typeof (result as Promise<void>).then === 'function') {
-				(result as Promise<void>)
-					.then(() => {
-						lastSavedContentRef.current = contentToSave;
-						markSaved();
-					})
-					.catch(() => {
-						useNoteStore.getState().setSaveStatus(paneId, 'error');
-					});
-			} else {
-				markSaved();
-			}
+		} else {
+			markSaved();
 		}
 	}, [markSaved, activeNodeId, paneId]);
+
+	const flushSave = useCallback(() => {
+		void flushSaveAsync();
+	}, [flushSaveAsync]);
 
 	// WYSIWYG Markdown decorations plugin
 	const wysiwygPlugin = useMemo(() => {
@@ -805,6 +820,7 @@ function CodeMirrorEditor({
 		}
 
 		const handleScroll = () => {
+			if (isZenModeRef.current && isFocusedRef.current) return;
 			if (!isSyncScrollEnabledRef.current || isSyncingRef.current) return;
 			const scroller = view.scrollDOM;
 			const maxScroll = scroller.scrollHeight - scroller.clientHeight;
@@ -827,9 +843,9 @@ function CodeMirrorEditor({
 		// below without recreating the view.
 	}, [onScrollSync, paneId, onWikiNavigate, getNoteTitles, flushSave, schedulePreview, activeNodeId]);
 
-	// Apply synced scroll from the other pane
+	// Apply synced scroll from the other pane (disabled in Zen — typewriter scroll owns the view)
 	useEffect(() => {
-		if (!isSyncScrollEnabled || syncScrollSource === paneId || syncScrollSource === null) return;
+		if (isZenMode || !isSyncScrollEnabled || syncScrollSource === paneId || syncScrollSource === null) return;
 		const view = viewRef.current;
 		if (!view) return;
 		const scroller = view.scrollDOM;
@@ -840,7 +856,7 @@ function CodeMirrorEditor({
 		requestAnimationFrame(() => {
 			isSyncingRef.current = false;
 		});
-	}, [syncScrollRatio, syncScrollSource, isSyncScrollEnabled, paneId]);
+	}, [syncScrollRatio, syncScrollSource, isSyncScrollEnabled, isZenMode, paneId]);
 
 	// Toggle WYSIWYG markdown view live without recreating the editor.
 	useEffect(() => {
@@ -888,12 +904,14 @@ function CodeMirrorEditor({
 
 	useEffect(() => {
 		useNoteStore.getState().registerEditorFlush(paneId, flushSave);
+		useNoteStore.getState().registerEditorFlushAsync(paneId, flushSaveAsync);
 		useNoteStore.getState().registerEditorGetDoc(paneId, () => viewRef.current?.state.doc.toString() ?? '');
 		return () => {
 			useNoteStore.getState().registerEditorFlush(paneId, null);
+			useNoteStore.getState().registerEditorFlushAsync(paneId, null);
 			useNoteStore.getState().registerEditorGetDoc(paneId, null);
 		};
-	}, [paneId, flushSave]);
+	}, [paneId, flushSave, flushSaveAsync]);
 
 	useEffect(() => {
 		lastSavedContentRef.current = content;
@@ -909,14 +927,17 @@ function CodeMirrorEditor({
 				return;
 			}
 			saveTimeoutRef.current = setTimeout(() => {
+				const gen = saveGenerationRef.current;
 				const result = onSaveRef.current(contentToSave);
 				if (result && typeof (result as Promise<void>).then === 'function') {
 					(result as Promise<void>)
 						.then(() => {
+							if (gen !== saveGenerationRef.current) return;
 							lastSavedContentRef.current = contentToSave;
 							markSaved();
 						})
 						.catch(() => {
+							if (gen !== saveGenerationRef.current) return;
 							useNoteStore.getState().setSaveStatus(paneId, 'error');
 						});
 				} else {
@@ -930,9 +951,11 @@ function CodeMirrorEditor({
 		};
 	}, [isDirty, markSaved, compositionTick]);
 
-	// Flush on window blur / before close
+	// Flush on window blur / before close (focused pane only for blur)
 	useEffect(() => {
-		const onBlur = () => flushSave();
+		const onBlur = () => {
+			if (useNoteStore.getState().focusedPane === paneId) flushSave();
+		};
 		const onBeforeUnload = (e: BeforeUnloadEvent) => {
 			flushSave();
 			if (isDirtyRef.current) {
@@ -946,7 +969,7 @@ function CodeMirrorEditor({
 			window.removeEventListener('blur', onBlur);
 			window.removeEventListener('beforeunload', onBeforeUnload);
 		};
-	}, [flushSave]);
+	}, [flushSave, paneId]);
 
 	return (
 		<div

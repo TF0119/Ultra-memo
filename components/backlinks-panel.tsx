@@ -33,7 +33,7 @@ export function BacklinksPanel({ paneId }: BacklinksPanelProps) {
 				{expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
 			</button>
 			{expanded && (
-				<div className="flex flex-wrap gap-1.5">
+				<div className="flex flex-col gap-1 max-w-lg">
 					{backlinks.map((bl) => (
 						<button
 							key={bl.id}
@@ -43,12 +43,15 @@ export function BacklinksPanel({ paneId }: BacklinksPanelProps) {
 								openNote(bl.id, targetPane, false);
 							}}
 							className={cn(
-								'text-[11px] px-2 py-0.5 rounded-md border border-border/40 max-w-[200px] truncate',
-								'hover:bg-accent/60 hover:border-border transition-colors text-muted-foreground hover:text-foreground'
+								'text-left px-2.5 py-1.5 rounded-md border border-border/40',
+								'hover:bg-accent/60 hover:border-border transition-colors'
 							)}
 							title={bl.snippet || bl.title}
 						>
-							{bl.title}
+							<div className="text-[11px] font-medium truncate text-foreground/90">{bl.title}</div>
+							{bl.snippet && (
+								<div className="text-[10px] text-muted-foreground/60 truncate mt-0.5">{bl.snippet}</div>
+							)}
 						</button>
 					))}
 				</div>
