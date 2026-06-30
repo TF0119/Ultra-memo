@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useNoteStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
-import { FileText, Copy, Check } from 'lucide-react';
+import { FileText, Copy, Check, WrapText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { StatusIndicator } from './status-indicator';
 import { MarkdownToggle } from './markdown-toggle';
@@ -46,7 +46,7 @@ interface EditorPaneProps {
 }
 
 export function EditorPane({ paneId }: EditorPaneProps) {
-	const { treeNodes, activeNodeIds, focusedPane, noteContents, loadingNoteIds, failedNoteIds, updateNoteContent, patchLocalContent, setFocusedPane, setSaveStatus, openNote, openWikiLink, retryLoadNote, isSyncScrollEnabled, syncScrollRatio, syncScrollSource, setSyncScrollRatio, isZenMode } =
+	const { treeNodes, activeNodeIds, focusedPane, noteContents, loadingNoteIds, failedNoteIds, updateNoteContent, patchLocalContent, setFocusedPane, setSaveStatus, openNote, openWikiLink, retryLoadNote, isSyncScrollEnabled, syncScrollRatio, syncScrollSource, setSyncScrollRatio, isZenMode, isLineWrapEnabled, toggleLineWrap } =
 		useNoteStore();
 
 	const activeNodeId = activeNodeIds[paneId];
@@ -174,6 +174,14 @@ export function EditorPane({ paneId }: EditorPaneProps) {
 							)}
 						</motion.button>
 					)}
+					<button
+						type="button"
+						onClick={(e) => { e.stopPropagation(); toggleLineWrap(); }}
+						className={cn('flex items-center justify-center w-5 h-5 rounded transition-colors hover:bg-muted/50', isLineWrapEnabled ? 'text-foreground' : 'text-muted-foreground/40 hover:text-foreground')}
+						title={isLineWrapEnabled ? '折り返し: オン' : '折り返し: オフ'}
+					>
+						<WrapText className="w-3.5 h-3.5" strokeWidth={2} />
+					</button>
 					{activeNode && <MarkdownToggle nodeId={activeNode.id} isMarkdownView={activeNode.isMarkdownView} />}
 					<StatusIndicator />
 				</div>
@@ -576,6 +584,9 @@ function CodeMirrorEditor({
 					border: '1px solid rgba(255,255,255,0.16)',
 					borderRadius: '6px',
 					overflow: 'hidden',
+					userSelect: 'text',
+					WebkitUserSelect: 'text',
+					cursor: 'text',
 				},
 				'.cm-md-table th, .cm-md-table td': {
 					border: '1px solid rgba(255,255,255,0.12)',
@@ -663,6 +674,24 @@ function CodeMirrorEditor({
 
 		const extensions = [
 			lineWrapCompartmentRef.current.of(isLineWrapEnabledRef.current ? EditorView.lineWrapping : []),
+			// Rendered markdown tables are block widgets; let the browser copy the
+			// natively-selected text inside them instead of CodeMirror's doc selection.
+			EditorView.domEventHandlers({
+				copy(event) {
+					const sel = window.getSelection();
+					if (!sel || sel.isCollapsed || !sel.toString()) return false;
+					const inTable = (node: Node | null) => {
+						const el = node && (node.nodeType === 3 ? node.parentElement : (node as Element));
+						return !!el?.closest?.('.cm-md-table');
+					};
+					if (inTable(sel.anchorNode) && inTable(sel.focusNode)) {
+						event.clipboardData?.setData('text/plain', sel.toString());
+						event.preventDefault();
+						return true;
+					}
+					return false;
+				},
+			}),
 			history(),
 			drawSelection(),
 			dropCursor(),
@@ -1005,8 +1034,9 @@ class TableWidget extends WidgetType {
 		wrap.appendChild(table);
 		return wrap;
 	}
+	// Let the browser handle events on the table so its text can be selected.
 	ignoreEvent() {
-		return false;
+		return true;
 	}
 }
 
