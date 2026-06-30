@@ -34,7 +34,7 @@ import {
 	ViewUpdate,
 	WidgetType,
 } from '@codemirror/view';
-import { EditorState, RangeSetBuilder } from '@codemirror/state';
+import { EditorState, RangeSetBuilder, StateField, type Text } from '@codemirror/state';
 import { indentWithTab, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { bracketMatching, indentOnInput } from '@codemirror/language';
@@ -382,9 +382,13 @@ function CodeMirrorEditor({
 				buildDecorations(view: EditorView): DecorationSet {
 					const builder = new RangeSetBuilder<Decoration>();
 					const doc = view.state.doc;
+					// Table blocks are rendered by mdTableField (block decorations must come
+					// from a state field, not a view plugin); skip those lines here.
+					const tableRanges = collectTableRanges(doc);
 
 					for (let i = 1; i <= doc.lines; i++) {
 						const line = doc.line(i);
+						if (tableRanges.some((r) => line.from >= r.from && line.from <= r.to)) continue;
 						const text = line.text;
 
 						// Headings: # ## ### etc.
@@ -557,6 +561,42 @@ function CodeMirrorEditor({
 					backgroundColor: 'rgba(255,255,255,0.1)',
 					margin: '0.5em 0',
 				},
+				'.cm-md-table-wrap': {
+					overflowX: 'auto',
+					margin: '0.7em 0',
+				},
+				'.cm-md-table': {
+					borderCollapse: 'collapse',
+					fontSize: '0.9em',
+					lineHeight: '1.4',
+					border: '1px solid rgba(255,255,255,0.16)',
+					borderRadius: '6px',
+					overflow: 'hidden',
+				},
+				'.cm-md-table th, .cm-md-table td': {
+					border: '1px solid rgba(255,255,255,0.12)',
+					padding: '6px 12px',
+					verticalAlign: 'top',
+				},
+				'.cm-md-table th': {
+					backgroundColor: 'rgba(255,255,255,0.07)',
+					fontWeight: '600',
+					color: '#ffffff',
+					whiteSpace: 'nowrap',
+				},
+				'.cm-md-table td': {
+					color: 'rgba(255,255,255,0.82)',
+				},
+				'.cm-md-table tbody tr:nth-child(even) td': {
+					backgroundColor: 'rgba(255,255,255,0.025)',
+				},
+				'.cm-md-table code': {
+					fontFamily: 'var(--font-mono)',
+					fontSize: '0.9em',
+					backgroundColor: 'rgba(255,255,255,0.1)',
+					padding: '0.05em 0.35em',
+					borderRadius: '4px',
+				},
 			},
 			{ dark: true }
 		);
@@ -682,7 +722,7 @@ function CodeMirrorEditor({
 
 		// Add WYSIWYG extensions when markdown view is enabled
 		if (isMarkdownView) {
-			extensions.push(wysiwygPlugin, wysiwygTheme);
+			extensions.push(wysiwygPlugin, wysiwygTheme, mdTableField);
 		}
 
 		const state = EditorState.create({
@@ -869,3 +909,140 @@ class CodeFenceWidget extends WidgetType {
 		return div;
 	}
 }
+
+// Renders a markdown table block (header / separator / body rows) as a real
+// styled HTML table in the WYSIWYG markdown view.
+class TableWidget extends WidgetType {
+	constructor(private source: string) {
+		super();
+	}
+	eq(other: TableWidget) {
+		return other.source === this.source;
+	}
+	private parseRow(line: string): string[] {
+		let s = line.trim();
+		if (s.startsWith('|')) s = s.slice(1);
+		if (s.endsWith('|')) s = s.slice(0, -1);
+		return s.split('|').map((c) => c.trim());
+	}
+	private renderInline(el: HTMLElement, text: string) {
+		const re = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g;
+		let last = 0;
+		let m: RegExpExecArray | null;
+		while ((m = re.exec(text)) !== null) {
+			if (m.index > last) el.appendChild(document.createTextNode(text.slice(last, m.index)));
+			const tok = m[0];
+			if (tok.startsWith('**')) {
+				const s = document.createElement('strong');
+				s.textContent = tok.slice(2, -2);
+				el.appendChild(s);
+			} else if (tok.startsWith('`')) {
+				const c = document.createElement('code');
+				c.textContent = tok.slice(1, -1);
+				el.appendChild(c);
+			} else {
+				const it = document.createElement('em');
+				it.textContent = tok.slice(1, -1);
+				el.appendChild(it);
+			}
+			last = m.index + tok.length;
+		}
+		if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
+	}
+	toDOM() {
+		const lines = this.source.split('\n').filter((l) => l.trim());
+		const header = this.parseRow(lines[0] ?? '');
+		const sep = this.parseRow(lines[1] ?? '');
+		const aligns = sep.map((c) => {
+			const l = c.startsWith(':');
+			const r = c.endsWith(':');
+			return l && r ? 'center' : r ? 'right' : 'left';
+		});
+		const body = lines.slice(2).map((l) => this.parseRow(l));
+
+		const wrap = document.createElement('div');
+		wrap.className = 'cm-md-table-wrap';
+		const table = document.createElement('table');
+		table.className = 'cm-md-table';
+
+		const thead = document.createElement('thead');
+		const htr = document.createElement('tr');
+		header.forEach((h, idx) => {
+			const th = document.createElement('th');
+			th.style.textAlign = aligns[idx] ?? 'left';
+			this.renderInline(th, h);
+			htr.appendChild(th);
+		});
+		thead.appendChild(htr);
+		table.appendChild(thead);
+
+		const tbody = document.createElement('tbody');
+		body.forEach((row) => {
+			const tr = document.createElement('tr');
+			for (let c = 0; c < header.length; c++) {
+				const td = document.createElement('td');
+				td.style.textAlign = aligns[c] ?? 'left';
+				this.renderInline(td, row[c] ?? '');
+				tr.appendChild(td);
+			}
+			tbody.appendChild(tr);
+		});
+		table.appendChild(tbody);
+		wrap.appendChild(table);
+		return wrap;
+	}
+	ignoreEvent() {
+		return false;
+	}
+}
+
+// Find markdown table blocks (header row + |---| separator + optional body).
+function collectTableRanges(doc: Text): { from: number; to: number; source: string }[] {
+	const ranges: { from: number; to: number; source: string }[] = [];
+	let i = 1;
+	while (i <= doc.lines) {
+		const text = doc.line(i).text;
+		if (/\|/.test(text) && text.trim() && !/^[\s|:\-]+$/.test(text) && i + 1 <= doc.lines) {
+			const sepText = doc.line(i + 1).text;
+			if (/-/.test(sepText) && /\|/.test(sepText) && /^[\s|:\-]+$/.test(sepText)) {
+				let endLine = i + 1;
+				let j = i + 2;
+				while (j <= doc.lines) {
+					const t = doc.line(j).text;
+					if (/\|/.test(t) && t.trim()) {
+						endLine = j;
+						j++;
+					} else break;
+				}
+				const first = doc.line(i);
+				const last = doc.line(endLine);
+				ranges.push({ from: first.from, to: last.to, source: doc.sliceString(first.from, last.to) });
+				i = endLine + 1;
+				continue;
+			}
+		}
+		i++;
+	}
+	return ranges;
+}
+
+function buildTableDecoSet(doc: Text): DecorationSet {
+	const builder = new RangeSetBuilder<Decoration>();
+	for (const r of collectTableRanges(doc)) {
+		builder.add(r.from, r.to, Decoration.replace({ widget: new TableWidget(r.source), block: true }));
+	}
+	return builder.finish();
+}
+
+// Block decorations must be provided by a state field (a view plugin would break
+// height measurement). Active only when the markdown view extensions are added.
+const mdTableField = StateField.define<DecorationSet>({
+	create(state) {
+		return buildTableDecoSet(state.doc);
+	},
+	update(deco, tr) {
+		return tr.docChanged ? buildTableDecoSet(tr.newDoc) : deco;
+	},
+	provide: (f) => EditorView.decorations.from(f),
+});
+
