@@ -130,9 +130,14 @@ export function checkboxClickHandler(onToggle: (line: number, checked: boolean) 
 		const checked = /^(\s*)((?:[-*+])|(?:\d+[.)]))(\s+)\[x\](\s+)/i.exec(line.text);
 		const match = unchecked ?? checked;
 		if (!match) return false;
-		// Raw view: only toggle when the click lands on the "[ ]" marker itself.
 		// WYSIWYG view: the whole marker is a single glyph, so any click on it counts.
-		if (!widget && pos > line.from + match[0].length) return false;
+		// Raw view: only toggle when the click lands on the "[ ]" brackets themselves —
+		// not the bullet, the surrounding spaces, or the caret slot right after "]"
+		// (clicking there to position the cursor must not flip the box).
+		if (!widget) {
+			const bracketStart = line.from + match[1].length + match[2].length + match[3].length;
+			if (pos < bracketStart || pos > bracketStart + 2) return false;
+		}
 		onToggle(line.number, !!unchecked);
 		return true;
 	};
