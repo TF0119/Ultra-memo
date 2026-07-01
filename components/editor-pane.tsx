@@ -1047,6 +1047,9 @@ class CheckboxWidget extends WidgetType {
 	constructor(private checked: boolean, private marker: string) {
 		super();
 	}
+	eq(other: CheckboxWidget) {
+		return other.checked === this.checked && other.marker === this.marker;
+	}
 	toDOM() {
 		const span = document.createElement('span');
 		span.className = 'cm-checkbox-marker';
@@ -1054,6 +1057,11 @@ class CheckboxWidget extends WidgetType {
 		span.textContent = `${prefix}${this.checked ? '☑' : '☐'} `;
 		span.style.cssText = 'cursor:pointer;user-select:none';
 		return span;
+	}
+	// Let clicks on the rendered checkbox reach the editor's mousedown handler
+	// (default ignoreEvent() returns true, which would swallow the toggle click).
+	ignoreEvent() {
+		return false;
 	}
 }
 

@@ -109,27 +109,35 @@ export function wikiLinkAutocomplete(getTitles: () => string[]) {
 }
 
 export function checkboxClickHandler(onToggle: (line: number, checked: boolean) => void) {
+	// Handle on mousedown (not click): returning true makes CodeMirror preventDefault,
+	// so the caret/focus never jumps to the checkbox before the toggle happens.
+	const handle = (event: MouseEvent, view: EditorView): boolean => {
+		if (event.button !== 0) return false;
+		const target = event.target as HTMLElement | null;
+		// WYSIWYG view: the "- [ ] " marker is replaced by a rendered glyph widget.
+		// Resolve its line directly from the DOM so any click on the glyph counts —
+		// posAtCoords is imprecise over a replaced widget and only fires beside it.
+		const widget = target?.closest?.('.cm-checkbox-marker') as HTMLElement | null;
+		let pos: number | null;
+		if (widget) {
+			pos = view.posAtDOM(widget);
+		} else {
+			pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+		}
+		if (pos == null) return false;
+		const line = view.state.doc.lineAt(pos);
+		const unchecked = /^(\s*)((?:[-*+])|(?:\d+[.)]))(\s+)\[ \](\s+)/.exec(line.text);
+		const checked = /^(\s*)((?:[-*+])|(?:\d+[.)]))(\s+)\[x\](\s+)/i.exec(line.text);
+		const match = unchecked ?? checked;
+		if (!match) return false;
+		// Raw view: only toggle when the click lands on the "[ ]" marker itself.
+		// WYSIWYG view: the whole marker is a single glyph, so any click on it counts.
+		if (!widget && pos > line.from + match[0].length) return false;
+		onToggle(line.number, !!unchecked);
+		return true;
+	};
 	return EditorView.domEventHandlers({
-		click(event, view) {
-			const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
-			if (pos == null) return false;
-			const line = view.state.doc.lineAt(pos);
-			const unchecked = /^(\s*)((?:[-*+])|(?:\d+[.)]))(\s+)\[ \](\s+)/.exec(line.text);
-			const checked = /^(\s*)((?:[-*+])|(?:\d+[.)]))(\s+)\[x\](\s+)/i.exec(line.text);
-			const match = unchecked ?? checked;
-			if (!match) return false;
-			const markerEnd = line.from + match[0].length;
-			if (pos > markerEnd) return false;
-			if (unchecked) {
-				onToggle(line.number, true);
-				return true;
-			}
-			if (checked) {
-				onToggle(line.number, false);
-				return true;
-			}
-			return false;
-		},
+		mousedown: handle,
 	});
 }
 
