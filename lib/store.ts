@@ -198,12 +198,23 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 					}
 				}
 			}
-			// Drop expand state for notes that no longer exist.
+			// Drop expand state for dead notes, then expand the ancestor chain of each
+			// open pane note so a restored child note is revealed in the tree on load.
 			set((s) => {
 				const liveIds = new Set(nodes.map((n) => n.id));
-				const pruned = new Set([...s.expandedNodeIds].filter((id) => liveIds.has(id)));
-				if (pruned.size !== s.expandedNodeIds.size) saveExpandedNodes(pruned);
-				return { expandedNodeIds: pruned };
+				const nodeById = new Map(nodes.map((n) => [n.id, n]));
+				const expanded = new Set([...s.expandedNodeIds].filter((id) => liveIds.has(id)));
+				for (const active of Object.values(s.activeNodeIds)) {
+					let current = active ? nodeById.get(active) : undefined;
+					while (current?.parentId) {
+						expanded.add(current.parentId);
+						current = nodeById.get(current.parentId);
+					}
+				}
+				const changed =
+					expanded.size !== s.expandedNodeIds.size || [...expanded].some((id) => !s.expandedNodeIds.has(id));
+				if (changed) saveExpandedNodes(expanded);
+				return { expandedNodeIds: expanded };
 			});
 		} catch (error) {
 			console.error('Failed to initialize store:', error);
