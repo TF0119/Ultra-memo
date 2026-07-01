@@ -737,12 +737,12 @@ function CodeMirrorEditor({
 				const view = viewRef.current;
 				if (!view) return;
 				const line = view.state.doc.line(lineNum);
-				const text = line.text;
-				const newLine = checked
-					? text.replace(/^(\s*)((?:[-*+])|(?:\d+[.)]))(\s+)\[ \](\s+)/, '$1$2$3[x]$4')
-					: text.replace(/^(\s*)((?:[-*+])|(?:\d+[.)]))(\s+)\[[xX]\](\s+)/, '$1$2$3[ ]$4');
-				if (newLine === text) return;
-				view.dispatch({ changes: { from: line.from, to: line.to, insert: newLine } });
+				const m = /^(\s*)((?:[-*+])|(?:\d+[.)]))(\s+)\[([ xX])\]/.exec(line.text);
+				if (!m) return;
+				// Replace only the single char between the brackets. Rewriting the whole
+				// line would collapse a cursor sitting on that line to line start.
+				const statePos = line.from + m[1].length + m[2].length + m[3].length + 1;
+				view.dispatch({ changes: { from: statePos, to: statePos + 1, insert: checked ? 'x' : ' ' } });
 				markDirty();
 				schedulePreview(view.state.doc.toString());
 			}),
