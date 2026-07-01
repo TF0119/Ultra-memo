@@ -10,7 +10,7 @@ import { TreeItem } from './tree-item';
 import { MultiSelectBar } from './multi-select-bar';
 import { ConfirmDialog } from './confirm-dialog';
 import { formatRelativeTime } from '@/lib/preferences';
-import { getBreadcrumbPath, getParentPathLabel } from '@/lib/tree-path';
+import { getParentPathLabel } from '@/lib/tree-path';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
@@ -319,23 +319,6 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 						<Plus className="w-4 h-4" />
 					</Button>
 				</div>
-				{selectedNodeId && !debouncedSearchQuery && (
-					<div className="flex items-center gap-1 text-[10px] text-muted-foreground/60 px-0.5 truncate min-h-[14px]">
-						{getBreadcrumbPath(treeNodes, selectedNodeId).map((item, index) => (
-							<span key={item.id} className="flex items-center gap-1 min-w-0">
-								{index > 0 && <span className="opacity-40 shrink-0">/</span>}
-								<button
-									type="button"
-									title={item.title}
-									onClick={() => selectNode(item.id)}
-									className="truncate hover:text-foreground transition-colors max-w-[120px]"
-								>
-									{item.title || '無題'}
-								</button>
-							</span>
-						))}
-					</div>
-				)}
 				{isShiftHeld && activeDragId && !searchInput && (
 					<p className="text-[10px] text-primary font-medium px-0.5 animate-pulse">↳ ここにドロップで子ノート化</p>
 				)}
