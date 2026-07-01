@@ -21,9 +21,15 @@ export function MarkdownToggle({ nodeId, isMarkdownView }: MarkdownToggleProps) 
 
 	return (
 		<button
+			type="button"
 			onClick={handleClick}
-			className={cn('flex items-center justify-center w-5 h-5 rounded transition-colors hover:bg-muted/50', isMarkdownView ? 'text-foreground' : 'text-muted-foreground/40')}
-			title={isMarkdownView ? 'マークダウン表示: オン' : 'マークダウン表示: オフ'}
+			aria-label={isMarkdownView ? 'Markdown 表示をオフにする' : 'Markdown 表示をオンにする'}
+			aria-pressed={isMarkdownView}
+			className={cn(
+				'flex items-center justify-center w-5 h-5 rounded transition-colors hover:bg-muted/50',
+				isMarkdownView ? 'text-foreground bg-muted/40' : 'text-muted-foreground/40 hover:text-foreground'
+			)}
+			title={isMarkdownView ? 'Markdown 表示: オン。クリックで Markdown 記法をそのまま編集' : 'Markdown 表示: オフ。クリックで Markdown を読みやすく表示'}
 		>
 			<Type className="w-3.5 h-3.5" strokeWidth={2} />
 		</button>

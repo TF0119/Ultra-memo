@@ -16,6 +16,15 @@ import { markdownAutoBullet } from '@/lib/editor-auto-input';
 import { editorPlaceholder } from '@/lib/editor-placeholder';
 import { typewriterScrollExtension } from '@/lib/editor-typewriter';
 import { saveEditorSession, restoreEditorSession } from '@/lib/editor-session';
+import {
+	appendMarkdownInline,
+	collectFencedCodeLineNumbers,
+	collectMarkdownTableRanges,
+	isMarkdownFenceLine,
+	parseMarkdownLine,
+	parseMarkdownTable,
+	type MarkdownLineDecoration,
+} from '@/lib/markdown-renderer';
 import { openSearchPanel } from '@codemirror/search';
 
 // CodeMirror imports
@@ -34,7 +43,7 @@ import {
 	ViewUpdate,
 	WidgetType,
 } from '@codemirror/view';
-import { EditorState, RangeSetBuilder, StateField, Compartment, type Text } from '@codemirror/state';
+import { EditorState, StateField, Compartment, type Range, type Text } from '@codemirror/state';
 import { indentWithTab, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { bracketMatching, indentOnInput } from '@codemirror/language';
@@ -318,10 +327,11 @@ function CodeMirrorEditor({
 	const isLineWrapEnabledRef = useRef(isLineWrapEnabled);
 	isLineWrapEnabledRef.current = isLineWrapEnabled;
 	const savedContentSeq = contentSaveSeq[activeNodeId] ?? 0;
-	const consumedTriggerRef = useRef(focusTarget.trigger);
+	const consumedTriggerRef = useRef(-1);
 	const editorRef = useRef<HTMLDivElement>(null);
 	const viewRef = useRef<EditorView | null>(null);
 	const [isDirty, setIsDirty] = useState(false);
+	const [saveTick, setSaveTick] = useState(0);
 	const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 	const isSyncingRef = useRef(false);
 	const isDirtyRef = useRef(false);
@@ -329,6 +339,7 @@ function CodeMirrorEditor({
 	const previewTimerRef = useRef<NodeJS.Timeout | null>(null);
 	const lastSavedContentRef = useRef(content);
 	const saveGenerationRef = useRef(0);
+	const saveRequestSeqRef = useRef(0);
 
 	useEffect(() => {
 		saveGenerationRef.current += 1;
@@ -364,6 +375,7 @@ function CodeMirrorEditor({
 	const markDirty = useCallback(() => {
 		isDirtyRef.current = true;
 		setIsDirty(true);
+		setSaveTick((tick) => tick + 1);
 		useNoteStore.getState().setSaveStatus(paneId, 'saving');
 	}, [paneId]);
 
@@ -400,19 +412,27 @@ function CodeMirrorEditor({
 			return;
 		}
 		const gen = saveGenerationRef.current;
+		const requestSeq = ++saveRequestSeqRef.current;
 		const result = onSaveRef.current(contentToSave);
 		if (result && typeof (result as Promise<void>).then === 'function') {
 			try {
 				await result;
 				if (gen !== saveGenerationRef.current) return;
+				if (requestSeq !== saveRequestSeqRef.current) return;
+				if (viewRef.current?.state.doc.toString() !== contentToSave) return;
 				lastSavedContentRef.current = contentToSave;
 				markSaved();
 			} catch {
 				if (gen !== saveGenerationRef.current) return;
+				if (requestSeq !== saveRequestSeqRef.current) return;
+				if (viewRef.current?.state.doc.toString() !== contentToSave) return;
 				useNoteStore.getState().setSaveStatus(paneId, 'error');
 			}
 		} else {
-			markSaved();
+			if (viewRef.current?.state.doc.toString() === contentToSave) {
+				lastSavedContentRef.current = contentToSave;
+				markSaved();
+			}
 		}
 	}, [markSaved, activeNodeId, paneId]);
 
@@ -437,143 +457,29 @@ function CodeMirrorEditor({
 				}
 
 				buildDecorations(view: EditorView): DecorationSet {
-					const builder = new RangeSetBuilder<Decoration>();
 					const doc = view.state.doc;
 					// Table blocks are rendered by mdTableField (block decorations must come
 					// from a state field, not a view plugin); skip those lines here.
-					const tableRanges = collectTableRanges(doc);
+					const codeBlockLines = collectFencedCodeLineNumbers(doc);
+					const tableRanges = collectMarkdownTableRanges(doc, codeBlockLines);
+					const ranges: Range<Decoration>[] = [];
 
 					for (let i = 1; i <= doc.lines; i++) {
 						const line = doc.line(i);
 						if (tableRanges.some((r) => line.from >= r.from && line.from <= r.to)) continue;
-						const text = line.text;
-
-						// Headings: # ## ### etc.
-						const headingMatch = text.match(/^(#{1,6})\s+/);
-						if (headingMatch) {
-							const level = headingMatch[1].length;
-							const markerEnd = line.from + headingMatch[0].length;
-
-							// Hide the # markers
-							builder.add(line.from, markerEnd, Decoration.replace({}));
-
-							// Style the heading text
-							const headingClass = `cm-heading-${level}`;
-							builder.add(markerEnd, line.to, Decoration.mark({ class: headingClass }));
-							continue;
+						const parsed = parseMarkdownLine(line.text, {
+							isCodeLine: codeBlockLines.has(i),
+							isFenceLine: isMarkdownFenceLine(line.text),
+						});
+						if (parsed.lineClasses.length > 0) {
+							ranges.push(Decoration.line({ class: parsed.lineClasses.join(' ') }).range(line.from));
 						}
-
-						// Checkbox: - [ ] or - [x]
-						const cbMatch = text.match(/^(\s*)- \[([ xX])\] /);
-						if (cbMatch) {
-							const checked = cbMatch[2].toLowerCase() === 'x';
-							const indentLength = cbMatch[1].length;
-							const markerStart = line.from + indentLength;
-							const markerEnd = line.from + cbMatch[0].length;
-							builder.add(
-								markerStart,
-								markerEnd,
-								Decoration.replace({
-									widget: new CheckboxWidget(checked),
-								})
-							);
-							continue;
-						}
-
-						// Unordered list: - or * or +
-						const ulMatch = text.match(/^(\s*)([-*+])\s+/);
-						if (ulMatch) {
-							const indentLength = ulMatch[1].length;
-							const markerStart = line.from + indentLength;
-							const markerEnd = line.from + ulMatch[0].length;
-
-							// Replace - with bullet
-							builder.add(
-								markerStart,
-								markerEnd,
-								Decoration.replace({
-									widget: new BulletWidget(),
-								})
-							);
-							continue;
-						}
-
-						// Ordered list: 1. 2. etc.
-						const olMatch = text.match(/^(\s*)(\d+)\.\s+/);
-						if (olMatch) {
-							const indentLength = olMatch[1].length;
-							const number = olMatch[2];
-							const markerStart = line.from + indentLength;
-							const markerEnd = line.from + olMatch[0].length;
-
-							builder.add(
-								markerStart,
-								markerEnd,
-								Decoration.replace({
-									widget: new NumberWidget(number),
-								})
-							);
-							continue;
-						}
-
-						// Code block fence
-						if (text.match(/^```/)) {
-							builder.add(
-								line.from,
-								line.to,
-								Decoration.replace({
-									widget: new CodeFenceWidget(),
-								})
-							);
-							continue;
-						}
-
-						// Inline styles: **bold**, *italic*, `code`
-						let pos = 0;
-						const inlineDecorations: Array<{ from: number; to: number; deco: Decoration }> = [];
-
-						// Bold: **text**
-						const boldRegex = /\*\*([^*]+)\*\*/g;
-						let match;
-						while ((match = boldRegex.exec(text)) !== null) {
-							const start = line.from + match.index;
-							const end = start + match[0].length;
-							// Hide opening **
-							inlineDecorations.push({ from: start, to: start + 2, deco: Decoration.replace({}) });
-							// Style content
-							inlineDecorations.push({ from: start + 2, to: end - 2, deco: Decoration.mark({ class: 'cm-bold' }) });
-							// Hide closing **
-							inlineDecorations.push({ from: end - 2, to: end, deco: Decoration.replace({}) });
-						}
-
-						// Italic: *text*
-						const italicRegex = /(?<!\*)\*([^*]+)\*(?!\*)/g;
-						while ((match = italicRegex.exec(text)) !== null) {
-							const start = line.from + match.index;
-							const end = start + match[0].length;
-							inlineDecorations.push({ from: start, to: start + 1, deco: Decoration.replace({}) });
-							inlineDecorations.push({ from: start + 1, to: end - 1, deco: Decoration.mark({ class: 'cm-italic' }) });
-							inlineDecorations.push({ from: end - 1, to: end, deco: Decoration.replace({}) });
-						}
-
-						// Inline code: `code`
-						const codeRegex = /`([^`]+)`/g;
-						while ((match = codeRegex.exec(text)) !== null) {
-							const start = line.from + match.index;
-							const end = start + match[0].length;
-							inlineDecorations.push({ from: start, to: start + 1, deco: Decoration.replace({}) });
-							inlineDecorations.push({ from: start + 1, to: end - 1, deco: Decoration.mark({ class: 'cm-inline-code' }) });
-							inlineDecorations.push({ from: end - 1, to: end, deco: Decoration.replace({}) });
-						}
-
-						// Sort by position and add to builder
-						inlineDecorations.sort((a, b) => a.from - b.from);
-						for (const d of inlineDecorations) {
-							builder.add(d.from, d.to, d.deco);
+						for (const decoration of parsed.decorations) {
+							addMarkdownDecoration(ranges, line.from, decoration);
 						}
 					}
 
-					return builder.finish();
+					return Decoration.set(ranges, true);
 				}
 			},
 			{
@@ -594,12 +500,34 @@ function CodeMirrorEditor({
 				'.cm-heading-6': { fontSize: '0.9em', fontWeight: '600', lineHeight: '1.4', color: '#888' },
 				'.cm-bold': { fontWeight: '700' },
 				'.cm-italic': { fontStyle: 'italic' },
+				'.cm-strike': { textDecoration: 'line-through', opacity: '0.78' },
+				'.cm-link': {
+					color: '#7dd3fc',
+					textDecoration: 'underline',
+					textUnderlineOffset: '2px',
+				},
 				'.cm-inline-code': {
 					backgroundColor: 'rgba(255,255,255,0.1)',
 					padding: '0.1em 0.4em',
 					borderRadius: '4px',
 					fontFamily: 'var(--font-mono)',
 					fontSize: '0.9em',
+				},
+				'.cm-blockquote-line': {
+					borderLeft: '3px solid rgba(255,255,255,0.22)',
+					color: 'rgba(255,255,255,0.72)',
+					paddingLeft: '0.9em',
+				},
+				'.cm-blockquote-marker': {
+					display: 'inline-block',
+					width: '0.8em',
+					color: 'rgba(255,255,255,0.45)',
+				},
+				'.cm-checkbox-marker': {
+					display: 'inline-block',
+					minWidth: '1.5em',
+					color: 'rgba(255,255,255,0.74)',
+					fontVariantNumeric: 'tabular-nums',
 				},
 				'.cm-bullet': {
 					display: 'inline-block',
@@ -612,11 +540,42 @@ function CodeMirrorEditor({
 					color: '#888',
 					fontWeight: '500',
 				},
-				'.cm-code-fence': {
-					display: 'block',
+				'.cm-code-block-line': {
+					backgroundColor: 'rgba(255,255,255,0.055)',
+					fontFamily: 'var(--font-mono)',
+				},
+				'.cm-code-fence-line': {
+					color: 'rgba(255,255,255,0.42)',
+				},
+				'.cm-horizontal-rule-line': {
+					color: 'rgba(255,255,255,0.24)',
+				},
+				'.cm-horizontal-rule': {
+					display: 'inline-block',
+					width: 'min(32rem, 70%)',
 					height: '1px',
-					backgroundColor: 'rgba(255,255,255,0.1)',
-					margin: '0.5em 0',
+					margin: '0.6em 0',
+					backgroundColor: 'rgba(255,255,255,0.22)',
+					verticalAlign: 'middle',
+				},
+				'.cm-md-image': {
+					display: 'inline-flex',
+					alignItems: 'center',
+					gap: '0.45em',
+					maxWidth: '100%',
+					verticalAlign: 'middle',
+				},
+				'.cm-md-image img': {
+					display: 'inline-block',
+					maxWidth: 'min(100%, 34rem)',
+					maxHeight: '18rem',
+					borderRadius: '6px',
+					border: '1px solid rgba(255,255,255,0.12)',
+					objectFit: 'contain',
+				},
+				'.cm-md-image-alt': {
+					color: 'rgba(255,255,255,0.46)',
+					fontSize: '0.86em',
 				},
 				'.cm-md-table-wrap': {
 					overflowX: 'auto',
@@ -656,6 +615,14 @@ function CodeMirrorEditor({
 					backgroundColor: 'rgba(255,255,255,0.1)',
 					padding: '0.05em 0.35em',
 					borderRadius: '4px',
+				},
+				'.cm-md-table a': {
+					color: '#7dd3fc',
+					textDecoration: 'underline',
+					textUnderlineOffset: '2px',
+				},
+				'.cm-md-table img': {
+					maxHeight: '8rem',
 				},
 			},
 			{ dark: true }
@@ -717,9 +684,13 @@ function CodeMirrorEditor({
 			{ dark: true }
 		);
 
+		const lineWrapCompartment = lineWrapCompartmentRef.current;
+		const wysiwygCompartment = wysiwygCompartmentRef.current;
+		if (!lineWrapCompartment || !wysiwygCompartment) return;
+
 		const extensions = [
-			lineWrapCompartmentRef.current.of(isLineWrapEnabledRef.current ? EditorView.lineWrapping : []),
-			wysiwygCompartmentRef.current.of(isMarkdownView ? [wysiwygPlugin, wysiwygTheme, mdTableField] : []),
+			lineWrapCompartment.of(isLineWrapEnabledRef.current ? EditorView.lineWrapping : []),
+			wysiwygCompartment.of(isMarkdownView ? [wysiwygPlugin, wysiwygTheme, mdTableField] : []),
 			// Rendered markdown tables are block widgets; let the browser copy the
 			// natively-selected text inside them instead of CodeMirror's doc selection.
 			EditorView.domEventHandlers({
@@ -768,8 +739,8 @@ function CodeMirrorEditor({
 				const line = view.state.doc.line(lineNum);
 				const text = line.text;
 				const newLine = checked
-					? text.replace(/^(\s*)- \[ \] /, '$1- [x] ')
-					: text.replace(/^(\s*)- \[[xX]\] /, '$1- [ ] ');
+					? text.replace(/^(\s*)((?:[-*+])|(?:\d+[.)]))(\s+)\[ \](\s+)/, '$1$2$3[x]$4')
+					: text.replace(/^(\s*)((?:[-*+])|(?:\d+[.)]))(\s+)\[[xX]\](\s+)/, '$1$2$3[ ]$4');
 				if (newLine === text) return;
 				view.dispatch({ changes: { from: line.from, to: line.to, insert: newLine } });
 				markDirty();
@@ -898,7 +869,7 @@ function CodeMirrorEditor({
 				if (view.state.doc.length === 0) {
 					view.dispatch({ selection: { anchor: 0, head: 0 } });
 				}
-				view.focus();
+				if (!view.hasFocus) view.focus();
 				consumedTriggerRef.current = focusTarget.trigger;
 			}
 		}
@@ -927,7 +898,15 @@ function CodeMirrorEditor({
 
 	useEffect(() => {
 		lastSavedContentRef.current = content;
-	}, [activeNodeId, content]);
+		isDirtyRef.current = false;
+		setIsDirty(false);
+	}, [activeNodeId]);
+
+	useEffect(() => {
+		if (!isDirtyRef.current) {
+			lastSavedContentRef.current = content;
+		}
+	}, [content]);
 
 	// Save effect (debounced) — skip while IME is composing
 	useEffect(() => {
@@ -940,28 +919,35 @@ function CodeMirrorEditor({
 			}
 			saveTimeoutRef.current = setTimeout(() => {
 				const gen = saveGenerationRef.current;
+				const requestSeq = ++saveRequestSeqRef.current;
 				const result = onSaveRef.current(contentToSave);
 				if (result && typeof (result as Promise<void>).then === 'function') {
 					(result as Promise<void>)
 						.then(() => {
 							if (gen !== saveGenerationRef.current) return;
+							if (requestSeq !== saveRequestSeqRef.current) return;
+							if (viewRef.current?.state.doc.toString() !== contentToSave) return;
 							lastSavedContentRef.current = contentToSave;
 							markSaved();
 						})
 						.catch(() => {
 							if (gen !== saveGenerationRef.current) return;
+							if (requestSeq !== saveRequestSeqRef.current) return;
+							if (viewRef.current?.state.doc.toString() !== contentToSave) return;
 							useNoteStore.getState().setSaveStatus(paneId, 'error');
 						});
 				} else {
-					lastSavedContentRef.current = contentToSave;
-					markSaved();
+					if (viewRef.current?.state.doc.toString() === contentToSave) {
+						lastSavedContentRef.current = contentToSave;
+						markSaved();
+					}
 				}
 			}, 400);
 		}
 		return () => {
 			if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 		};
-	}, [isDirty, markSaved, compositionTick]);
+	}, [isDirty, markSaved, compositionTick, saveTick, paneId]);
 
 	// Flush on window blur / before close (focused pane only for blur)
 	useEffect(() => {
@@ -993,6 +979,48 @@ function CodeMirrorEditor({
 	);
 }
 
+function addMarkdownDecoration(ranges: Range<Decoration>[], lineFrom: number, decoration: MarkdownLineDecoration) {
+	const from = lineFrom + decoration.from;
+	const to = lineFrom + decoration.to;
+
+	if (decoration.kind === 'hide') {
+		ranges.push(Decoration.replace({}).range(from, to));
+		return;
+	}
+	if (decoration.kind === 'mark') {
+		ranges.push(
+			Decoration.mark({
+				class: decoration.className,
+				attributes: decoration.title ? { title: decoration.title } : undefined,
+			}).range(from, to)
+		);
+		return;
+	}
+	if (decoration.kind === 'blockquote') {
+		ranges.push(Decoration.replace({ widget: new BlockquoteWidget(decoration.depth) }).range(from, to));
+		return;
+	}
+	if (decoration.kind === 'bullet') {
+		ranges.push(Decoration.replace({ widget: new BulletWidget() }).range(from, to));
+		return;
+	}
+	if (decoration.kind === 'number') {
+		ranges.push(Decoration.replace({ widget: new NumberWidget(decoration.number, decoration.delimiter) }).range(from, to));
+		return;
+	}
+	if (decoration.kind === 'checkbox') {
+		ranges.push(Decoration.replace({ widget: new CheckboxWidget(decoration.checked, decoration.marker) }).range(from, to));
+		return;
+	}
+	if (decoration.kind === 'hr') {
+		ranges.push(Decoration.replace({ widget: new HorizontalRuleWidget() }).range(from, to));
+		return;
+	}
+	if (decoration.kind === 'image') {
+		ranges.push(Decoration.replace({ widget: new ImageWidget(decoration.alt, decoration.src, decoration.title) }).range(from, to));
+	}
+}
+
 // Widget classes for WYSIWYG rendering
 class BulletWidget extends WidgetType {
 	toDOM() {
@@ -1004,35 +1032,84 @@ class BulletWidget extends WidgetType {
 }
 
 class NumberWidget extends WidgetType {
-	constructor(private num: string) {
+	constructor(private num: string, private delimiter = '.') {
 		super();
 	}
 	toDOM() {
 		const span = document.createElement('span');
 		span.className = 'cm-number-marker';
-		span.textContent = `${this.num}. `;
+		span.textContent = `${this.num}${this.delimiter} `;
 		return span;
 	}
 }
 
 class CheckboxWidget extends WidgetType {
-	constructor(private checked: boolean) {
+	constructor(private checked: boolean, private marker: string) {
 		super();
 	}
 	toDOM() {
 		const span = document.createElement('span');
 		span.className = 'cm-checkbox-marker';
-		span.textContent = this.checked ? '☑ ' : '☐ ';
+		const prefix = /^\d+[.)]$/.test(this.marker) ? `${this.marker} ` : '';
+		span.textContent = `${prefix}${this.checked ? '☑' : '☐'} `;
 		span.style.cssText = 'cursor:pointer;user-select:none';
 		return span;
 	}
 }
 
-class CodeFenceWidget extends WidgetType {
+class BlockquoteWidget extends WidgetType {
+	constructor(private depth = 1) {
+		super();
+	}
 	toDOM() {
-		const div = document.createElement('div');
-		div.className = 'cm-code-fence';
-		return div;
+		const span = document.createElement('span');
+		span.className = 'cm-blockquote-marker';
+		span.dataset.depth = String(this.depth);
+		span.textContent = '▌ ';
+		return span;
+	}
+}
+
+class HorizontalRuleWidget extends WidgetType {
+	toDOM() {
+		const span = document.createElement('span');
+		span.className = 'cm-horizontal-rule';
+		return span;
+	}
+}
+
+class ImageWidget extends WidgetType {
+	constructor(private alt: string, private src: string, private title?: string) {
+		super();
+	}
+	eq(other: ImageWidget) {
+		return other.alt === this.alt && other.src === this.src && other.title === this.title;
+	}
+	toDOM() {
+		const span = document.createElement('span');
+		span.className = 'cm-md-image';
+		span.title = this.title ?? this.src;
+
+		if (!/^(https?:|data:image\/|file:|\/|\.\/|\.\.\/)/i.test(this.src)) {
+			span.textContent = this.alt || this.src;
+			return span;
+		}
+
+		const img = document.createElement('img');
+		img.src = this.src;
+		img.alt = this.alt;
+		img.loading = 'lazy';
+		if (this.title) img.title = this.title;
+		span.appendChild(img);
+
+		if (this.alt) {
+			const caption = document.createElement('span');
+			caption.className = 'cm-md-image-alt';
+			caption.textContent = this.alt;
+			span.appendChild(caption);
+		}
+
+		return span;
 	}
 }
 
@@ -1045,70 +1122,37 @@ class TableWidget extends WidgetType {
 	eq(other: TableWidget) {
 		return other.source === this.source;
 	}
-	private parseRow(line: string): string[] {
-		let s = line.trim();
-		if (s.startsWith('|')) s = s.slice(1);
-		if (s.endsWith('|')) s = s.slice(0, -1);
-		return s.split('|').map((c) => c.trim());
-	}
-	private renderInline(el: HTMLElement, text: string) {
-		const re = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g;
-		let last = 0;
-		let m: RegExpExecArray | null;
-		while ((m = re.exec(text)) !== null) {
-			if (m.index > last) el.appendChild(document.createTextNode(text.slice(last, m.index)));
-			const tok = m[0];
-			if (tok.startsWith('**')) {
-				const s = document.createElement('strong');
-				s.textContent = tok.slice(2, -2);
-				el.appendChild(s);
-			} else if (tok.startsWith('`')) {
-				const c = document.createElement('code');
-				c.textContent = tok.slice(1, -1);
-				el.appendChild(c);
-			} else {
-				const it = document.createElement('em');
-				it.textContent = tok.slice(1, -1);
-				el.appendChild(it);
-			}
-			last = m.index + tok.length;
-		}
-		if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
-	}
 	toDOM() {
-		const lines = this.source.split('\n').filter((l) => l.trim());
-		const header = this.parseRow(lines[0] ?? '');
-		const sep = this.parseRow(lines[1] ?? '');
-		const aligns = sep.map((c) => {
-			const l = c.startsWith(':');
-			const r = c.endsWith(':');
-			return l && r ? 'center' : r ? 'right' : 'left';
-		});
-		const body = lines.slice(2).map((l) => this.parseRow(l));
+		const parsed = parseMarkdownTable(this.source);
 
 		const wrap = document.createElement('div');
 		wrap.className = 'cm-md-table-wrap';
+		if (!parsed) {
+			wrap.textContent = this.source;
+			return wrap;
+		}
+
 		const table = document.createElement('table');
 		table.className = 'cm-md-table';
 
 		const thead = document.createElement('thead');
 		const htr = document.createElement('tr');
-		header.forEach((h, idx) => {
+		parsed.headers.forEach((h, idx) => {
 			const th = document.createElement('th');
-			th.style.textAlign = aligns[idx] ?? 'left';
-			this.renderInline(th, h);
+			th.style.textAlign = parsed.aligns[idx] ?? 'left';
+			appendMarkdownInline(th, h);
 			htr.appendChild(th);
 		});
 		thead.appendChild(htr);
 		table.appendChild(thead);
 
 		const tbody = document.createElement('tbody');
-		body.forEach((row) => {
+		parsed.rows.forEach((row) => {
 			const tr = document.createElement('tr');
-			for (let c = 0; c < header.length; c++) {
+			for (let c = 0; c < parsed.headers.length; c++) {
 				const td = document.createElement('td');
-				td.style.textAlign = aligns[c] ?? 'left';
-				this.renderInline(td, row[c] ?? '');
+				td.style.textAlign = parsed.aligns[c] ?? 'left';
+				appendMarkdownInline(td, row[c] ?? '');
 				tr.appendChild(td);
 			}
 			tbody.appendChild(tr);
@@ -1123,42 +1167,11 @@ class TableWidget extends WidgetType {
 	}
 }
 
-// Find markdown table blocks (header row + |---| separator + optional body).
-function collectTableRanges(doc: Text): { from: number; to: number; source: string }[] {
-	const ranges: { from: number; to: number; source: string }[] = [];
-	let i = 1;
-	while (i <= doc.lines) {
-		const text = doc.line(i).text;
-		if (/\|/.test(text) && text.trim() && !/^[\s|:\-]+$/.test(text) && i + 1 <= doc.lines) {
-			const sepText = doc.line(i + 1).text;
-			if (/-/.test(sepText) && /\|/.test(sepText) && /^[\s|:\-]+$/.test(sepText)) {
-				let endLine = i + 1;
-				let j = i + 2;
-				while (j <= doc.lines) {
-					const t = doc.line(j).text;
-					if (/\|/.test(t) && t.trim()) {
-						endLine = j;
-						j++;
-					} else break;
-				}
-				const first = doc.line(i);
-				const last = doc.line(endLine);
-				ranges.push({ from: first.from, to: last.to, source: doc.sliceString(first.from, last.to) });
-				i = endLine + 1;
-				continue;
-			}
-		}
-		i++;
-	}
-	return ranges;
-}
-
 function buildTableDecoSet(doc: Text): DecorationSet {
-	const builder = new RangeSetBuilder<Decoration>();
-	for (const r of collectTableRanges(doc)) {
-		builder.add(r.from, r.to, Decoration.replace({ widget: new TableWidget(r.source), block: true }));
-	}
-	return builder.finish();
+	return Decoration.set(
+		collectMarkdownTableRanges(doc).map((r) => Decoration.replace({ widget: new TableWidget(r.source), block: true }).range(r.from, r.to)),
+		true
+	);
 }
 
 // Block decorations must be provided by a state field (a view plugin would break
@@ -1172,4 +1185,3 @@ const mdTableField = StateField.define<DecorationSet>({
 	},
 	provide: (f) => EditorView.decorations.from(f),
 });
-

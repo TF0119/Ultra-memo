@@ -114,8 +114,8 @@ export function checkboxClickHandler(onToggle: (line: number, checked: boolean) 
 			const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
 			if (pos == null) return false;
 			const line = view.state.doc.lineAt(pos);
-			const unchecked = /^(\s*)- \[ \] /.exec(line.text);
-			const checked = /^(\s*)- \[x\] /i.exec(line.text);
+			const unchecked = /^(\s*)((?:[-*+])|(?:\d+[.)]))(\s+)\[ \](\s+)/.exec(line.text);
+			const checked = /^(\s*)((?:[-*+])|(?:\d+[.)]))(\s+)\[x\](\s+)/i.exec(line.text);
 			const match = unchecked ?? checked;
 			if (!match) return false;
 			const markerEnd = line.from + match[0].length;
@@ -139,9 +139,9 @@ export function toggleCheckboxLine(doc: string, lineNumber: number, checked: boo
 	if (idx < 0 || idx >= lines.length) return doc;
 	const line = lines[idx];
 	if (checked) {
-		lines[idx] = line.replace(/^(\s*)- \[ \] /, '$1- [x] ');
+		lines[idx] = line.replace(/^(\s*)((?:[-*+])|(?:\d+[.)]))(\s+)\[ \](\s+)/, '$1$2$3[x]$4');
 	} else {
-		lines[idx] = line.replace(/^(\s*)- \[[xX]\] /, '$1- [ ] ');
+		lines[idx] = line.replace(/^(\s*)((?:[-*+])|(?:\d+[.)]))(\s+)\[[xX]\](\s+)/, '$1$2$3[ ]$4');
 	}
 	return lines.join('\n');
 }

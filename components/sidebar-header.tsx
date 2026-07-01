@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useNoteStore, canNavigateHistory } from '@/lib/store';
 import { Button } from './ui/button';
-import { ChevronLeft, ChevronRight, Trash2, Columns2, Maximize2, Crosshair, Link2, Download } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2, Columns2, Maximize2, Link2, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TrashModal } from './trash-modal';
 
@@ -14,8 +14,7 @@ interface SidebarHeaderProps {
 
 export function SidebarHeader({ splitMode, setSplitMode }: SidebarHeaderProps) {
 	const store = useNoteStore();
-	const { goBack, goForward, isFollowActiveEnabled, isSyncScrollEnabled, toggleFollowActive, toggleSyncScroll, exportMarkdownTree } =
-		store;
+	const { goBack, goForward, isSyncScrollEnabled, toggleSyncScroll, exportMarkdownTree } = store;
 	const [trashOpen, setTrashOpen] = useState(false);
 
 	const canGoBack = canNavigateHistory(store, 'back');
@@ -55,18 +54,9 @@ export function SidebarHeader({ splitMode, setSplitMode }: SidebarHeaderProps) {
 					<Button
 						variant="ghost"
 						size="sm"
-						className={cn('h-7 w-7 p-0 transition-colors', isFollowActiveEnabled ? 'text-primary bg-primary/10' : 'hover:bg-accent/80')}
-						title={isFollowActiveEnabled ? 'Follow Active: ON' : 'Follow Active: OFF'}
-						onClick={toggleFollowActive}
-					>
-						<Crosshair className="w-3.5 h-3.5" />
-					</Button>
-
-					<Button
-						variant="ghost"
-						size="sm"
 						className={cn('h-7 w-7 p-0 transition-colors', isSyncScrollEnabled ? 'text-primary bg-primary/10' : 'hover:bg-accent/80')}
 						title={isSyncScrollEnabled ? '同期スクロール: ON' : '同期スクロール: OFF'}
+						aria-pressed={isSyncScrollEnabled}
 						onClick={toggleSyncScroll}
 						disabled={splitMode !== 'split'}
 					>

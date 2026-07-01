@@ -412,12 +412,13 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 		set((state) => {
 			const preview = content.slice(0, 80);
 			const node = state.treeNodes.find((n) => n.id === id);
-			// Skip tree rebuild when preview unchanged — keeps the virtualized tree stable while typing.
+			// Keep live editor text out of noteContents until the save succeeds.
+			// noteContents is the last persisted value; mixing local preview text into
+			// it makes autosave think nothing changed and can trigger focus churn.
 			if (node && node.contentPreview === preview && node.contentLength === content.length) {
-				return { noteContents: { ...state.noteContents, [id]: content } };
+				return {};
 			}
 			return {
-				noteContents: { ...state.noteContents, [id]: content },
 				treeNodes: state.treeNodes.map((n) =>
 					n.id === id ? { ...n, contentPreview: preview, contentLength: content.length } : n
 				),
@@ -428,6 +429,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	createSibling: async (selectedId) => {
 		try {
 			const newNode = mapTreeNode(await invoke<Record<string, unknown>>('create_sibling', { selectedId }));
+			clearEditorSession(newNode.id);
 			set((state) => ({
 				treeNodes: [...state.treeNodes, newNode],
 				selectedNodeId: newNode.id,
@@ -444,6 +446,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	createChild: async (parentId) => {
 		try {
 			const newNode = mapTreeNode(await invoke<Record<string, unknown>>('create_child', { parentId }));
+			clearEditorSession(newNode.id);
 			set((state) => {
 				const newExpanded = new Set(state.expandedNodeIds);
 				if (parentId) newExpanded.add(parentId);
@@ -473,6 +476,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 		try {
 			const title = formatQuickCaptureTitle();
 			const newNode = mapTreeNode(await invoke<Record<string, unknown>>('create_quick_note', { title }));
+			clearEditorSession(newNode.id);
 			set((state) => ({
 				treeNodes: [newNode, ...state.treeNodes],
 				selectedNodeId: newNode.id,
@@ -633,10 +637,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 	setFocusedPane: (paneId) => {
 		set((state) => {
 			if (state.focusedPane === paneId) return state;
-			return {
-				focusedPane: paneId,
-				focusTarget: { nodeId: state.activeNodeIds[paneId], paneId, trigger: state.focusTarget.trigger + 1 },
-			};
+			return { focusedPane: paneId };
 		});
 	},
 
@@ -712,6 +713,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 			const newNode = mapTreeNode(
 				await invoke<Record<string, unknown>>('create_note_with_title', { title: trimmed, parentId: null })
 			);
+			clearEditorSession(newNode.id);
 			set((state) => ({
 				treeNodes: [...state.treeNodes, newNode],
 				noteContents: { ...state.noteContents, [newNode.id]: '' },
@@ -913,7 +915,7 @@ function refreshHasChildrenFlags(nodes: TreeNode[]): TreeNode[] {
 	}));
 }
 
-export { flattenVisible, canNavigateHistory };
+export { flattenVisible };
 
 async function openFallbackAfterDelete(state: NoteStore, deletedIds: string[]) {
 	const idSet = new Set(deletedIds);

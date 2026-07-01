@@ -24,7 +24,7 @@ interface TreeItemProps {
 	dragDisabled?: boolean;
 	onSelect: (id: string, e: React.MouseEvent) => void;
 	onToggle: (id: string, e: React.MouseEvent) => void;
-	onOpenNote: (id: string) => void;
+	onOpenNote: (id: string, shouldFocusEditor?: boolean) => void;
 	onTriggerEditorFocus: () => void;
 	onRename: (id: string) => void;
 	onCommitRename: (id: string, title: string) => void;
@@ -119,8 +119,7 @@ export function TreeItem({
 			}}
 			onDoubleClick={(e) => {
 				e.preventDefault();
-				onOpenNote(node.id);
-				onTriggerEditorFocus();
+				onOpenNote(node.id, true);
 			}}
 			tabIndex={isSelected ? 0 : -1}
 		>

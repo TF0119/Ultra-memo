@@ -202,8 +202,7 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 				e.stopPropagation();
 				const targetPane =
 					e.ctrlKey && splitMode === 'split' ? ((focusedPane === 1 ? 2 : 1) as 1 | 2) : focusedPane;
-				openNote(selectedNodeId, targetPane);
-				if (!e.ctrlKey) triggerEditorFocus();
+				openNote(selectedNodeId, targetPane, !e.ctrlKey);
 			} else if (e.key === 'F2') {
 				e.preventDefault();
 				setEditingNodeId(selectedNodeId);
@@ -412,7 +411,7 @@ export function TreeSidebar({ splitMode = 'single' }: { splitMode?: 'single' | '
 												dragDisabled={!!searchInput}
 												onSelect={handleSelect}
 												onToggle={(id, e) => { e.stopPropagation(); toggleExpanded(id); }}
-												onOpenNote={(id) => openNote(id, focusedPane, false)}
+												onOpenNote={(id, shouldFocusEditor = false) => openNote(id, focusedPane, shouldFocusEditor)}
 												onTriggerEditorFocus={triggerEditorFocus}
 												onRename={(id) => setEditingNodeId(id)}
 												onCommitRename={(id, title) => renameNote(id, title)}

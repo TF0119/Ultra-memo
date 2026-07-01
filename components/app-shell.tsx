@@ -10,6 +10,7 @@ import { SidebarHeader } from './sidebar-header';
 import { useNoteStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { loadSidebarWidth, saveSidebarWidth, loadSplitMode, saveSplitMode } from '@/lib/preferences';
+import { Minimize2 } from 'lucide-react';
 
 export function AppShell() {
 	const [isQuickSwitcherOpen, setIsQuickSwitcherOpen] = useState(false);
@@ -272,15 +273,15 @@ export function AppShell() {
 				<div className="flex-1 overflow-hidden relative">
 					<EditorWorkspace splitMode={isZenMode ? 'single' : splitMode} setSplitMode={setSplitMode} />
 					{isZenMode && (
-						<div className="absolute top-0 left-0 right-0 h-10 bg-gradient-to-b from-background/80 to-transparent pointer-events-none z-10 flex items-start justify-end px-4 pt-2 opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300">
-							<button
-								type="button"
-								onClick={() => toggleZenMode()}
-								className="pointer-events-auto text-[10px] text-muted-foreground/60 hover:text-muted-foreground bg-background/60 backdrop-blur px-2 py-1 rounded border border-border/30 transition-colors"
-							>
-								Zen終了 · F11
-							</button>
-						</div>
+						<button
+							type="button"
+							onClick={() => toggleZenMode()}
+							aria-label="集中モードを終了"
+							title="集中モードを終了 (F11)"
+							className="absolute right-3 top-3 z-20 flex h-7 w-7 items-center justify-center rounded-md border border-border/20 bg-background/35 text-muted-foreground/45 opacity-45 shadow-sm backdrop-blur-sm transition-[opacity,color,background-color,border-color] duration-150 hover:border-border/50 hover:bg-background/80 hover:text-foreground hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/20"
+						>
+							<Minimize2 className="h-3.5 w-3.5" strokeWidth={1.8} />
+						</button>
 					)}
 				</div>
 			</div>

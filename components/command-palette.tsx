@@ -52,7 +52,7 @@ export function CommandPalette({ isOpen, onClose, onOpenSearch, splitMode, setSp
 			{ id: 'forward', label: '進む', shortcut: 'Alt+→', keywords: 'forward history 進む', group: 'nav', action: () => store.goForward() },
 			{ id: 'split', label: splitMode === 'single' ? '分割表示に切替' : '単一表示に切替', keywords: 'split pane', group: 'view', action: () => setSplitMode(splitMode === 'single' ? 'split' : 'single') },
 			{ id: 'zen', label: store.isZenMode ? 'Zenモード終了' : 'Zenモード（集中執筆）', shortcut: 'F11', keywords: 'zen focus 集中', group: 'view', action: () => store.toggleZenMode() },
-			{ id: 'follow', label: store.isFollowActiveEnabled ? 'Follow Active OFF' : 'Follow Active ON', keywords: 'follow scroll 追従', group: 'view', action: () => store.toggleFollowActive() },
+			{ id: 'follow', label: store.isFollowActiveEnabled ? '開いているノートをツリーで追う: OFF' : '開いているノートをツリーで追う: ON', keywords: 'follow active scroll 追従', group: 'view', action: () => store.toggleFollowActive() },
 			{ id: 'sync', label: store.isSyncScrollEnabled ? '同期スクロール OFF' : '同期スクロール ON', keywords: 'sync scroll', group: 'view', action: () => store.toggleSyncScroll() },
 			{ id: 'sort', label: store.sortMode === 'recent' ? '並び順: 手動順に変更' : '並び順: 新しい順に変更', keywords: 'sort recent 並び', group: 'tree', action: () => store.toggleSortMode() },
 			{ id: 'expand', label: 'すべて展開', shortcut: 'Ctrl+Shift+]', keywords: 'expand all', group: 'tree', action: () => store.expandAll() },
